@@ -70,7 +70,7 @@ def with_temp_file [
 ]: nothing -> any {
   let temp_file = $"/tmp/dynamodb_nu_loader_(random chars --length 12).json"
   
-  try {
+  let result = try {
     # Save data to temp file
     $data | to json | save $temp_file
     
@@ -89,6 +89,8 @@ def with_temp_file [
   if ($temp_file | path exists) {
     try { rm $temp_file } catch { |_| }
   }
+  
+  $result
 }
 def handle_aws_error [
   error_output: string
@@ -328,7 +330,11 @@ def scan_table_recursive [
     page_count: ($accumulator.page_count + 1)
   }
   
-  print $"  Page ($updated_accumulator.page_count): Found ($page_result.count) items \(scanned ($page_result.scanned_count)\)"
+  let page_count = $updated_accumulator.page_count
+  let found_count = $page_result.count
+  let scanned_count = $page_result.scanned_count
+  let message = $"  Page ($page_count): Found ($found_count) items " + "(scanned " + ($scanned_count | into string) + ")"
+  print $message
   
   if $page_result.last_evaluated_key == null {
     $updated_accumulator
@@ -450,30 +456,29 @@ def batch_write_recursive [
   if $result.success {
     let response = $result.response
     
-    # Check for unprocessed items
+    # Check for unprocessed items - simplified logic
     let unprocessed = $response | get -o UnprocessedItems
-    if $unprocessed != null and ($table_name in ($unprocessed | columns)) {
-      let new_remaining_items = ($unprocessed | get $table_name)
-      
-      if ($new_remaining_items | length) > 0 {
-        let new_count = ($new_remaining_items | length)
-        let attempt_num = ($retry_count + 1)
-        print $"  Retrying ($new_count) unprocessed items (attempt ($attempt_num)/($max_retries))"
-        
-        # Exponential backoff: wait 2^retry_count seconds
-        let wait_time = ([1, 2, 4, 8, 16] | get $retry_count)
-        print $"  Waiting ($wait_time) seconds before retry..."
-        sleep ($wait_time * 1sec)
-        
-        batch_write_recursive $table_name $aws_region $new_remaining_items ($retry_count + 1) $max_retries
+    if $unprocessed != null {
+      if ($table_name in ($unprocessed | columns)) {
+        let remaining_items = ($unprocessed | get $table_name)
+        if ($remaining_items | length) > 0 {
+          print $"  Retrying unprocessed items..."
+          # Exponential backoff: wait 2^retry_count seconds
+          let wait_time = ([1, 2, 4, 8, 16] | get $retry_count)
+          print $"  Waiting ($wait_time) seconds before retry..."
+          sleep ($wait_time * 1sec)
+          
+          batch_write_recursive $table_name $aws_region $remaining_items ($retry_count + 1) $max_retries
+        }
       }
-      # else: No more unprocessed items - success
     }
     # else: All items processed successfully
   } else {
-    # Error occurred - retry
+    # Error occurred - retry with original items
     if $retry_count < $max_retries {
-      print $"  Batch write error, retrying (attempt ($retry_count + 1)/($max_retries)): ($result.error)"
+      let current_attempt = ($retry_count + 1)
+      let retry_message = $"  Batch write error, retrying " + "(attempt " + ($current_attempt | into string) + "/" + ($max_retries | into string) + "): " + $result.error
+      print $retry_message
       
       let wait_time = ([1, 2, 4, 8, 16] | get $retry_count)
       sleep ($wait_time * 1sec)
@@ -593,8 +598,12 @@ def detect_and_process [file: string]: nothing -> list<record> {
   if ($file | str ends-with ".csv") {
     open $file  # Nushell auto-detects CSV
   } else {
-    # Parse as JSON (Nushell auto-detects)
-    let data = open $file
+    # Parse as JSON - explicitly parse for files without .json extension
+    let data = try {
+      open $file | from json
+    } catch {
+      open $file
+    }
     # Check if data is a record with 'data' field (snapshot format)
     if ($data | describe) =~ "record" and ("data" in ($data | columns)) {
       $data.data  # JSON snapshot format
@@ -653,8 +662,8 @@ def "main snapshot" [
   --table: string  # DynamoDB table name
   --region: string  # AWS region
   --snapshots-dir: string  # Snapshots directory
-  --dry-run = false  # Count items exactly but don't save snapshot
-  --exact-count = false  # Use exact count (slower, more expensive)
+  --dry-run  # Count items exactly but don't save snapshot
+  --exact-count  # Use exact count (slower, more expensive)
 ]: nothing -> nothing {
   let table_name = $table | default $env.TABLE_NAME?
   let aws_region = $region | default $env.AWS_REGION?
@@ -697,7 +706,7 @@ def "main snapshot" [
   save_snapshot $table_name $output_file --region $aws_region --exact-count $exact_count
   let items = scan_table $table_name --region $aws_region
   let saved_items = ($items | length)
-  print $"Snapshot saved to ($output_file) (JSON format, ($saved_items) items)"
+  print $"Snapshot saved to ($output_file) - JSON format, ($saved_items) items"
 }
 
 def "main restore" [
@@ -810,34 +819,30 @@ def "main status" [
     error make { msg: "AWS region must be provided via --region flag or AWS_REGION environment variable" }
   }
   
-  try {
-    let result = (^aws dynamodb describe-table --table-name $table_name --region $aws_region | complete)
-    
-    if $result.exit_code != 0 {
-      handle_aws_error $result.stderr "describe-table"
-    }
-    
-    let description = ($result.stdout | from json)
-    
-    let table_info = {
-      table_name: $description.Table.TableName,
-      status: $description.Table.TableStatus,
-      item_count_approx: $description.Table.ItemCount,
-      creation_time: $description.Table.CreationDateTime,
-      size_bytes: $description.Table.TableSizeBytes
-    }
-    
-    print $"Table: ($table_info.table_name)"
-    print $"Status: ($table_info.status)"
-    print $"Items (approximate): ($table_info.item_count_approx)"
-    print $"Size: ($table_info.size_bytes) bytes"
-    print $"Created: ($table_info.creation_time)"
-    print ""
-    print "ℹ️  Item count is approximate and updated by AWS every ~6 hours"
-    print "   For exact count, use: nu main.nu snapshot --dry-run"
-    
-    # Function completed successfully
+  let result = try {
+    (^aws dynamodb describe-table --table-name $table_name --region $aws_region | complete)
   } catch { |error|
     error make { msg: $"Error getting table status for ($table_name): ($error.msg)" }
   }
+  
+  if $result.exit_code != 0 {
+    handle_aws_error $result.stderr "describe-table"
+  }
+  
+  let description = ($result.stdout | from json)
+  
+  let table_name_display = $description.Table.TableName
+  let table_status = $description.Table.TableStatus
+  let item_count = $description.Table.ItemCount
+  let table_size = $description.Table.TableSizeBytes
+  let creation_time = $description.Table.CreationDateTime
+  
+  print $"Table: ($table_name_display)"
+  print $"Status: ($table_status)"
+  print ("Items (approximate): " + ($item_count | into string))
+  print $"Size: ($table_size) bytes"
+  print $"Created: ($creation_time)"
+  print ""
+  print "ℹ️  Item count is approximate and updated by AWS every ~6 hours"
+  print "   For exact count, use: nu main.nu snapshot --dry-run"
 }
