@@ -1,0 +1,3 @@
+id,sort_key,name,email,age,gsi1_pk,gsi1_sk
+user-1,USER,Alice Johnson,alice@example.com,30,ACTIVE_USER,2024-01-15
+user-2,USER,Bob Smith,bob@example.com,25,ACTIVE_USER,2024-01-20

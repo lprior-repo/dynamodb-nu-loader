@@ -1,0 +1,20 @@
+[
+  {
+    "id": "user-1",
+    "sort_key": "USER",
+    "name": "Alice Johnson",
+    "email": "alice@example.com",
+    "age": 30,
+    "gsi1_pk": "ACTIVE_USER",
+    "gsi1_sk": "2024-01-15"
+  },
+  {
+    "id": "user-2", 
+    "sort_key": "USER",
+    "name": "Bob Smith",
+    "email": "bob@example.com",
+    "age": 25,
+    "gsi1_pk": "ACTIVE_USER",
+    "gsi1_sk": "2024-01-20"
+  }
+]

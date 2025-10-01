@@ -1,0 +1,91 @@
+# DynamoDB Nu-Loader .gitignore
+
+# Terraform files
+terraform/.terraform/
+terraform/.terraform.lock.hcl
+terraform/terraform.tfstate
+terraform/terraform.tfstate.backup
+terraform/*.tfplan
+terraform/.terraform.tfstate.lock.info
+
+# Snapshots and data files
+snapshots/
+*.json
+*.csv
+!config.toml.example
+!tests/fixtures/*.json
+!tests/fixtures/*.csv
+
+# Temporary test files
+/tmp/
+test-*
+temp-*
+
+# AWS CLI files
+.aws/
+aws-credentials
+
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# Logs
+*.log
+logs/
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Backup files
+*.bak
+*.backup
+*.orig
+
+# Nushell history
+.nu_history
+
+# Test artifacts
+coverage.out
+test-results/
+*.test
+
+# Local configuration overrides
+config.local.toml
+local-config.toml
+
+# Build artifacts
+build/
+dist/
+
+# Documentation build
+docs/_build/
+site/
+
+# Cache directories
+.cache/
+cache/
+
+# Local development databases
+*.db
+*.sqlite
+
+# AWS SAM
+.aws-sam/
+
+# Local runtime
+runtime/
+tmp/

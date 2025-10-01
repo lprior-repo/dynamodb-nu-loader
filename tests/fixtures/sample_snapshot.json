@@ -1,0 +1,29 @@
+{
+  "metadata": {
+    "table_name": "test-table",
+    "timestamp": "2024-01-01 12:00:00",
+    "item_count": 2,
+    "tool": "dynamodb-nu-loader",
+    "version": "1.0"
+  },
+  "data": [
+    {
+      "id": "user-1",
+      "sort_key": "USER", 
+      "name": "Alice Johnson",
+      "email": "alice@example.com",
+      "age": 30,
+      "gsi1_pk": "ACTIVE_USER",
+      "gsi1_sk": "2024-01-15"
+    },
+    {
+      "id": "user-2",
+      "sort_key": "USER",
+      "name": "Bob Smith", 
+      "email": "bob@example.com",
+      "age": 25,
+      "gsi1_pk": "ACTIVE_USER",
+      "gsi1_sk": "2024-01-20"
+    }
+  ]
+}
