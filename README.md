@@ -5,9 +5,9 @@ A minimal, production-ready test data management tool for DynamoDB tables built 
 ## 🚀 Getting Started
 
 ### Prerequisites
-- [Nushell](https://www.nushell.sh/book/installation.html) installed
-- [AWS CLI](https://aws.amazon.com/cli/) configured with credentials
-- DynamoDB table with `id` (string) and `sort_key` (string) as primary keys
+- **[Nushell](https://www.nushell.sh/book/installation.html)** v0.98+ installed ([download](https://github.com/nushell/nushell/releases))
+- **[AWS CLI](https://aws.amazon.com/cli/)** configured with credentials ([setup guide](https://docs.aws.amazon.com/cli/latest/userguide/getting-started-quickstart.html))
+- **DynamoDB table** with `id` (string) and `sort_key` (string) as primary keys ([table creation guide](https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/getting-started-step-1.html))
 
 ### Quick Start
 ```bash
@@ -52,6 +52,7 @@ nu main.nu wipe --force             # Clear all data
 - **[All Commands](./docs/commands.md)** - Detailed command reference
 - **[File Formats](./docs/formats.md)** - Supported data formats
 - **[Examples](./docs/examples.md)** - Common usage patterns
+- **[Nushell Guide](./docs/nushell-guide.md)** - Understanding the code for newcomers
 
 ## ⚡ Commands Overview
 
@@ -147,9 +148,21 @@ Our implementation follows AWS DynamoDB best practices:
 
 ## 📋 Requirements
 
-- **Nushell**: v0.98+ 
-- **AWS CLI**: Latest version
-- **AWS Permissions**: `dynamodb:Scan`, `dynamodb:BatchWriteItem`, `dynamodb:DescribeTable`, `dynamodb:DeleteItem`
+- **[Nushell](https://www.nushell.sh/)**: v0.98+ ([installation guide](https://www.nushell.sh/book/installation.html))
+- **[AWS CLI](https://aws.amazon.com/cli/)**: Latest version ([installation](https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html))
+- **AWS Permissions**: [`dynamodb:Scan`](https://docs.aws.amazon.com/amazondynamodb/latest/APIReference/API_Scan.html), [`dynamodb:BatchWriteItem`](https://docs.aws.amazon.com/amazondynamodb/latest/APIReference/API_BatchWriteItem.html), [`dynamodb:DescribeTable`](https://docs.aws.amazon.com/amazondynamodb/latest/APIReference/API_DescribeTable.html), [`dynamodb:DeleteItem`](https://docs.aws.amazon.com/amazondynamodb/latest/APIReference/API_DeleteItem.html)
+
+## 📚 Nushell Learning Resources
+
+New to Nushell? These resources will help you understand the code:
+
+- **[Nushell Book](https://www.nushell.sh/book/)** - Complete programming guide
+- **[Quick Tour](https://www.nushell.sh/book/quick_tour.html)** - 10-minute introduction
+- **[Types & Values](https://www.nushell.sh/book/types_of_data.html)** - Understanding Nushell data types
+- **[Pipeline Syntax](https://www.nushell.sh/book/pipelines.html)** - How `|` operators work
+- **[Functions](https://www.nushell.sh/book/custom_commands.html)** - Creating custom commands
+- **[Error Handling](https://www.nushell.sh/book/working_with_errors.html)** - `try`/`catch` patterns used in our code
+- **[External Commands](https://www.nushell.sh/book/externs.html)** - Running AWS CLI with `^aws`
 
 ---
 

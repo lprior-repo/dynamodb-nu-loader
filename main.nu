@@ -16,9 +16,10 @@
 
 # Enhanced help function - displays comprehensive usage information
 # In Nushell:
-# - 'def' defines a function
+# - 'def' defines a function: https://www.nushell.sh/book/custom_commands.html
 # - []: nothing -> nothing means no parameters and returns nothing (void)
 # - Functions are pure by default - they don't modify global state
+# Learn more: https://www.nushell.sh/book/types_of_data.html#nothing
 def show_enhanced_help []: nothing -> nothing {
   # 'print' command outputs text to stdout
   # Nushell supports Unicode characters and emojis in strings
@@ -85,8 +86,8 @@ def main []: nothing -> nothing {
 
 # Creates a temporary file, executes an operation with it, then cleans up
 # Key Nushell concepts:
-# - 'closure' type represents a block of code that can be passed around
-# - 'any' type means the parameter accepts any data type
+# - 'closure' type: https://www.nushell.sh/book/types_of_data.html#closures-blocks
+# - 'any' type: https://www.nushell.sh/book/types_of_data.html#any
 # - Function handles both success and error cases with proper cleanup
 def with_temp_file [
   data: any           # Data to write to temp file
@@ -96,14 +97,14 @@ def with_temp_file [
   # 'random chars' generates random characters for uniqueness
   let temp_file = $"/tmp/dynamodb_nu_loader_(random chars --length 12).json"
   
-  # 'try' block for error handling - like try/catch in other languages
+  # 'try' block for error handling: https://www.nushell.sh/book/working_with_errors.html
   let result = try {
-    # Nushell pipeline: data flows left to right through '|' operator
+    # Nushell pipeline: https://www.nushell.sh/book/pipelines.html
     # $data | to json converts data to JSON string
     # | save $temp_file writes the JSON to the file
     $data | to json | save $temp_file
     
-    # 'do' executes the closure (operation) with the temp_file as argument
+    # 'do' executes the closure: https://www.nushell.sh/book/custom_commands.html#closures
     do $operation $temp_file
   } catch { |error|
     # Cleanup on error - ensure temp file is removed
@@ -189,8 +190,8 @@ def handle_aws_error [
 # ✅ SAFE FUNCTION: Only reads AWS account information, no data modification
 def validate_aws_credentials []: nothing -> nothing {
   try {
-    # '^' prefix runs external command (aws CLI) instead of Nushell built-ins
-    # 'complete' captures both stdout, stderr, and exit code as a record
+    # '^' prefix runs external command: https://www.nushell.sh/book/externs.html
+    # 'complete' captures stdout, stderr, and exit code: https://www.nushell.sh/commands/docs/complete.html
     let result = (^aws sts get-caller-identity | complete)
     
     # Check exit code - 0 means success, non-zero means error
@@ -238,8 +239,8 @@ def get_table_key_schema [
   table_name: string    # DynamoDB table name
   --region: string      # AWS region (optional flag, uses env var if not provided)
 ]: nothing -> record {
-  # '| default' provides fallback value if $region is null
-  # '$env.AWS_REGION?' safely accesses environment variable (? means don't error if missing)
+  # '| default' provides fallback value: https://www.nushell.sh/commands/docs/default.html
+  # '$env.AWS_REGION?' safely accesses environment variable: https://www.nushell.sh/book/environment.html
   let aws_region = $region | default $env.AWS_REGION?
   
   # Input validation - ensure we have a region before making AWS calls
@@ -256,7 +257,7 @@ def get_table_key_schema [
     }
     
     # Parse JSON response from AWS CLI
-    # 'from json' converts JSON string to Nushell data structures
+    # 'from json' converts JSON string to Nushell data: https://www.nushell.sh/commands/docs/from_json.html
     let table_description = $result.stdout | from json
     
     # Return a record (like a struct/object) with key schema information
@@ -278,25 +279,28 @@ def get_key_attributes_for_item [
   attribute_definitions: list<record> # Table's attribute definitions (types)
 ]: nothing -> record {
   # Build the key object dynamically based on the table's schema
-  # 'reduce -f {}' starts with empty record and builds up the key object
+  # 'reduce' accumulates values: https://www.nushell.sh/commands/docs/reduce.html
+  # '-f {}' starts with empty record and builds up the key object
   # Each iteration adds one key attribute to the accumulator
   $key_schema | reduce -f {} { |key_def, acc|
     let attr_name = $key_def.AttributeName
     let attr_value = $item | get $attr_name
     
     # Find the attribute type from the table definition
-    # 'where' filters records, 'first' gets the first match
+    # 'where' filters records: https://www.nushell.sh/commands/docs/where.html
+    # 'first' gets the first match: https://www.nushell.sh/commands/docs/first.html
     let attr_type = ($attribute_definitions | where AttributeName == $attr_name | first).AttributeType
     
     # Convert to DynamoDB's format based on attribute type
     # DynamoDB uses type-annotated values: {"S": "string"}, {"N": "number"}, etc.
+    # 'match' pattern matching: https://www.nushell.sh/book/control_flow.html#match
     let dynamodb_value = match $attr_type {
       "S" => { "S": ($attr_value | into string) },  # String type
       "N" => { "N": ($attr_value | into string) },  # Number type (stored as string)
       "B" => { "B": $attr_value }                   # Binary type
     }
     
-    # 'insert' adds a new field to the record
+    # 'insert' adds a new field to the record: https://www.nushell.sh/commands/docs/insert.html
     $acc | insert $attr_name $dynamodb_value
   }
 }
