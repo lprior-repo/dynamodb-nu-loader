@@ -145,13 +145,10 @@ def handle_aws_error [
 
 def validate_aws_credentials []: nothing -> nothing {
   try {
-    let result = ^aws sts get-caller-identity
-    let exit_code = $env.LAST_EXIT_CODE
+    let result = (complete { ^aws sts get-caller-identity })
     
-    if $exit_code != 0 {
-      error make { 
-        msg: "AWS credentials are not configured or invalid. Run 'aws configure' to set up your credentials."
-      }
+    if $result.exit_code != 0 {
+      handle_aws_error $result.stderr "validate-credentials"
     }
     
     print "✅ AWS credentials validated"
@@ -167,11 +164,10 @@ def validate_table_exists [
   region: string
 ]: nothing -> nothing {
   try {
-    let result = ^aws dynamodb describe-table --table-name $table_name --region $region
-    let exit_code = $env.LAST_EXIT_CODE
+    let result = (complete { ^aws dynamodb describe-table --table-name $table_name --region $region })
     
-    if $exit_code != 0 {
-      error make { msg: $"Failed to describe table ($table_name). Exit code: ($exit_code)" }
+    if $result.exit_code != 0 {
+      handle_aws_error $result.stderr "describe-table"
     }
     
     print $"✅ Table ($table_name) exists and is accessible"
@@ -194,14 +190,13 @@ def get_table_key_schema [
   }
   
   try {
-    let result = ^aws dynamodb describe-table --table-name $table_name --region $aws_region
-    let exit_code = $env.LAST_EXIT_CODE
+    let result = (complete { ^aws dynamodb describe-table --table-name $table_name --region $aws_region })
     
-    if $exit_code != 0 {
-      error make { msg: $"Failed to describe table ($table_name). Exit code: ($exit_code)" }
+    if $result.exit_code != 0 {
+      handle_aws_error $result.stderr "describe-table"
     }
     
-    let table_description = $result | from json
+    let table_description = $result.stdout | from json
     {
       key_schema: $table_description.Table.KeySchema,
       attribute_definitions: $table_description.Table.AttributeDefinitions
@@ -285,20 +280,18 @@ def scan_table_page [
   
   try {
     let result = if $exclusive_start_key == null {
-      ^aws dynamodb scan --table-name $table_name --region $aws_region
+      (complete { ^aws dynamodb scan --table-name $table_name --region $aws_region })
     } else {
       with_temp_file $exclusive_start_key { |temp_file|
-        ^aws dynamodb scan --table-name $table_name --region $aws_region --exclusive-start-key $"file://($temp_file)"
+        (complete { ^aws dynamodb scan --table-name $table_name --region $aws_region --exclusive-start-key $"file://($temp_file)" })
       }
     }
     
-    let exit_code = $env.LAST_EXIT_CODE
-    
-    if $exit_code != 0 {
-      error make { msg: $"Failed to scan table ($table_name). Exit code: ($exit_code)" }
+    if $result.exit_code != 0 {
+      handle_aws_error $result.stderr "scan-table"
     }
     
-    let scan_result = $result | from json
+    let scan_result = $result.stdout | from json
     let items = $scan_result | get Items | each { |item|
       let converted = ($item | transpose key value | reduce -f {} { |row, acc|
         let field_name = $row.key
@@ -320,6 +313,30 @@ def scan_table_page [
   }
 }
 
+# Functional helper for recursive scanning
+def scan_table_recursive [
+  table_name: string
+  aws_region: string
+  accumulator: record
+  --exclusive-start-key: any = null
+]: nothing -> record {
+  let page_result = scan_table_page $table_name --region $aws_region --exclusive-start-key $exclusive_start_key
+  
+  let updated_accumulator = {
+    items: ($accumulator.items | append $page_result.items),
+    total_scanned: ($accumulator.total_scanned + $page_result.scanned_count),
+    page_count: ($accumulator.page_count + 1)
+  }
+  
+  print $"  Page ($updated_accumulator.page_count): Found ($page_result.count) items (scanned ($page_result.scanned_count))"
+  
+  if $page_result.last_evaluated_key == null {
+    $updated_accumulator
+  } else {
+    scan_table_recursive $table_name $aws_region $updated_accumulator --exclusive-start-key $page_result.last_evaluated_key
+  }
+}
+
 def scan_table [
   table_name: string
   --region: string  # AWS region
@@ -332,29 +349,16 @@ def scan_table [
   
   print $"Scanning table ($table_name)..."
   
-  mut all_items = []
-  mut last_evaluated_key = null
-  mut total_scanned = 0
-  mut page_count = 0
-  
-  loop {
-    let page_result = scan_table_page $table_name --region $aws_region --exclusive-start-key $last_evaluated_key
-    
-    $all_items = ($all_items | append $page_result.items)
-    $total_scanned = $total_scanned + $page_result.scanned_count
-    $page_count = $page_count + 1
-    
-    print $"  Page ($page_count): Found ($page_result.count) items (scanned ($page_result.scanned_count))"
-    
-    $last_evaluated_key = $page_result.last_evaluated_key
-    
-    if $last_evaluated_key == null {
-      break
-    }
+  let initial_accumulator = {
+    items: [],
+    total_scanned: 0,
+    page_count: 0
   }
   
-  print $"Scan complete: ($all_items | length) total items across ($page_count) pages"
-  $all_items
+  let final_result = scan_table_recursive $table_name $aws_region $initial_accumulator
+  
+  print $"Scan complete: ($final_result.items | length) total items across ($final_result.page_count) pages"
+  $final_result.items
 }
 
 def convert_to_dynamodb_value [value: any]: any -> record {
@@ -404,6 +408,79 @@ def convert_to_dynamodb_value [value: any]: any -> record {
   }
 }
 
+# Functional helper for recursive batch writing with retry
+def batch_write_recursive [
+  table_name: string
+  aws_region: string
+  remaining_items: list<record>
+  retry_count: int
+  max_retries: int
+]: nothing -> nothing {
+  if ($remaining_items | length) == 0 {
+    return  # Success - all items processed
+  }
+  
+  if $retry_count > $max_retries {
+    error make { msg: $"Failed to process ($remaining_items | length) items after ($max_retries) retries" }
+  }
+  
+  let batch_request = {
+    "RequestItems": {
+      $table_name: $remaining_items
+    }
+  }
+  
+  let result = try {
+    with_temp_file $batch_request { |temp_file|
+      let aws_result = (complete { ^aws dynamodb batch-write-item --cli-input-json $"file://($temp_file)" --region $aws_region })
+      
+      if $aws_result.exit_code != 0 {
+        { success: false, error: $"Batch write failed: ($aws_result.stderr)" }
+      } else {
+        let response = $aws_result.stdout | from json
+        { success: true, response: $response }
+      }
+    }
+  } catch { |error|
+    { success: false, error: $error.msg }
+  }
+  
+  if $result.success {
+    let response = $result.response
+    
+    # Check for unprocessed items
+    let unprocessed = $response | get -o UnprocessedItems
+    if $unprocessed != null and ($table_name in ($unprocessed | columns)) {
+      let new_remaining_items = ($unprocessed | get $table_name)
+      
+      if ($new_remaining_items | length) > 0 {
+        print $"  Retrying ($new_remaining_items | length) unprocessed items (attempt ($retry_count + 1)/($max_retries))"
+        
+        # Exponential backoff: wait 2^retry_count seconds
+        let wait_time = ([1, 2, 4, 8, 16] | get $retry_count)
+        print $"  Waiting ($wait_time) seconds before retry..."
+        sleep ($wait_time * 1sec)
+        
+        batch_write_recursive $table_name $aws_region $new_remaining_items ($retry_count + 1) $max_retries
+      }
+      # else: No more unprocessed items - success
+    }
+    # else: All items processed successfully
+  } else {
+    # Error occurred - retry
+    if $retry_count < $max_retries {
+      print $"  Batch write error, retrying (attempt ($retry_count + 1)/($max_retries)): ($result.error)"
+      
+      let wait_time = ([1, 2, 4, 8, 16] | get $retry_count)
+      sleep ($wait_time * 1sec)
+      
+      batch_write_recursive $table_name $aws_region $remaining_items ($retry_count + 1) $max_retries
+    } else {
+      error make { msg: $"Batch write failed after ($max_retries) retries: ($result.error)" }
+    }
+  }
+}
+
 def batch_write_with_retry [
   table_name: string
   dynamodb_items: list<record>
@@ -416,73 +493,7 @@ def batch_write_with_retry [
     error make { msg: "AWS region must be provided via --region flag or AWS_REGION environment variable" }
   }
   
-  mut remaining_items = $dynamodb_items
-  mut retry_count = 0
-  
-  while (($remaining_items | length) > 0 and $retry_count <= $max_retries) {
-    let batch_request = {
-      "RequestItems": {
-        $table_name: $remaining_items
-      }
-    }
-    
-    let result = try {
-      with_temp_file $batch_request { |temp_file|
-        let aws_result = ^aws dynamodb batch-write-item --cli-input-json $"file://($temp_file)" --region $aws_region
-        let exit_code = $env.LAST_EXIT_CODE
-        
-        if $exit_code != 0 {
-          { success: false, error: $"Batch write failed with exit code: ($exit_code)" }
-        } else {
-          let response = $aws_result | from json
-          { success: true, response: $response }
-        }
-      }
-    } catch { |error|
-      { success: false, error: $error.msg }
-    }
-    
-    if $result.success {
-      let response = $result.response
-      
-      # Check for unprocessed items
-      let unprocessed = $response | get -o UnprocessedItems
-      if $unprocessed != null and ($table_name in ($unprocessed | columns)) {
-        $remaining_items = $unprocessed | get $table_name
-        $retry_count = $retry_count + 1
-        
-        if ($remaining_items | length) > 0 {
-          print $"  Retrying ($remaining_items | length) unprocessed items (attempt ($retry_count)/($max_retries))"
-          
-          # Exponential backoff: wait 2^retry_count seconds
-          let wait_time = ([1, 2, 4, 8, 16] | get ($retry_count - 1))
-          print $"  Waiting ($wait_time) seconds before retry..."
-          sleep ($wait_time * 1sec)
-        } else {
-          # No more unprocessed items
-          break
-        }
-      } else {
-        # All items processed successfully
-        break
-      }
-    } else {
-      # Error occurred
-      if $retry_count < $max_retries {
-        $retry_count = $retry_count + 1
-        print $"  Batch write error, retrying (attempt ($retry_count)/($max_retries)): ($result.error)"
-        
-        let wait_time = ([1, 2, 4, 8, 16] | get ($retry_count - 1))
-        sleep ($wait_time * 1sec)
-      } else {
-        error make { msg: $"Batch write failed after ($max_retries) retries: ($result.error)" }
-      }
-    }
-  }
-  
-  if ($remaining_items | length) > 0 {
-    error make { msg: $"Failed to process ($remaining_items | length) items after ($max_retries) retries" }
-  }
+  batch_write_recursive $table_name $aws_region $dynamodb_items 0 $max_retries
 }
 
 def batch_write [
@@ -500,10 +511,10 @@ def batch_write [
   
   let batches = ($items | chunks 25)
   let total_batches = ($batches | length)
-  mut batch_num = 0
   
-  for batch in $batches {
-    $batch_num = $batch_num + 1
+  $batches | enumerate | each { |batch_data|
+    let batch_num = ($batch_data.index + 1)
+    let batch = $batch_data.item
     let batch_size = ($batch | length)
     print $"  Processing batch ($batch_num)/($total_batches) - ($batch_size) items"
     
@@ -518,7 +529,7 @@ def batch_write [
     })
     
     batch_write_with_retry $table_name $dynamodb_items --region $aws_region
-  }
+  } | ignore
   
   print $"Successfully wrote all ($items | length) items to ($table_name)"
 }
@@ -551,10 +562,10 @@ def delete_all [
   let batches = ($items | chunks 25)
   
   let total_batches = ($batches | length)
-  mut batch_num = 0
   
-  for batch in $batches {
-    $batch_num = $batch_num + 1
+  $batches | enumerate | each { |batch_data|
+    let batch_num = ($batch_data.index + 1)
+    let batch = $batch_data.item
     let batch_size = ($batch | length)
     print $"  Processing delete batch ($batch_num)/($total_batches) - ($batch_size) items"
     
@@ -568,7 +579,7 @@ def delete_all [
     })
     
     batch_write_with_retry $table_name $delete_requests --region $aws_region
-  }
+  } | ignore
 }
 
 # Data Operations
@@ -600,14 +611,13 @@ def save_snapshot [
   }
   
   # Get table description for metadata
-  let description_result = ^aws dynamodb describe-table --table-name $table_name --region $aws_region
-  let exit_code = $env.LAST_EXIT_CODE
+  let description_result = (complete { ^aws dynamodb describe-table --table-name $table_name --region $aws_region })
   
-  if $exit_code != 0 {
-    error make { msg: $"Failed to describe table ($table_name). Exit code: ($exit_code)" }
+  if $description_result.exit_code != 0 {
+    handle_aws_error $description_result.stderr "describe-table"
   }
   
-  let description = $description_result | from json
+  let description = $description_result.stdout | from json
   let items = scan_table $table_name --region $aws_region
   
   let item_count = if $exact_count {
@@ -792,14 +802,13 @@ def "main status" [
   }
   
   try {
-    let result = ^aws dynamodb describe-table --table-name $table_name --region $aws_region
-    let exit_code = $env.LAST_EXIT_CODE
+    let result = (complete { ^aws dynamodb describe-table --table-name $table_name --region $aws_region })
     
-    if $exit_code != 0 {
-      error make { msg: $"Failed to describe table ($table_name). Exit code: ($exit_code)" }
+    if $result.exit_code != 0 {
+      handle_aws_error $result.stderr "describe-table"
     }
     
-    let description = $result | from json
+    let description = $result.stdout | from json
     
     let table_info = {
       table_name: $description.Table.TableName,

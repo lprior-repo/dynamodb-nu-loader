@@ -2,6 +2,34 @@
 
 A minimal, production-ready test data management tool for DynamoDB tables built with [Nushell](https://www.nushell.sh/). Features functional programming principles, comprehensive testing, and efficient data operations.
 
+## 🤔 Why This Tool Exists
+
+While Terraform and other community packages exist for AWS infrastructure management, **DynamoDB Nu-Loader solves specific problems they don't address**:
+
+### 1. **End-to-End Testing with Data Mutation**
+- **Problem**: Terraform doesn't work well when you need to run E2E tests that mutate DynamoDB data and then restore it to a clean state
+- **Solution**: Quick snapshot/restore cycles that let you reset data between test runs without rebuilding infrastructure
+
+### 2. **SDLC Speed for DynamoDB Applications** 
+- **Problem**: Running `terraform apply/destroy` or managing unmanaged data outside TF state files slows down development cycles
+- **Solution**: Instant data operations that complement your infrastructure-as-code workflow without interfering with it
+
+### 3. **Opinionated CLI Experience**
+- **Problem**: Existing tools require complex configuration or don't provide the focused, opinionated approach needed for DynamoDB test data management  
+- **Solution**: Simple, powerful CLI with sensible defaults and functional programming principles built-in
+
+### 4. **Development Workflow Integration**
+```bash
+# Your typical workflow:
+terraform apply          # Set up infrastructure
+nu main.nu seed          # Load test data  
+./run-e2e-tests.sh       # Run tests that mutate data
+nu main.nu restore clean-state.json  # Reset data instantly
+./run-more-tests.sh      # Continue development
+```
+
+**DynamoDB Nu-Loader fills the gap between infrastructure management and data lifecycle management**, making it perfect for teams that need fast, reliable data operations during development and testing.
+
 ## ⚡ Quick Start
 
 1. **Prerequisites**: Install [Nushell](https://www.nushell.sh/book/installation.html) and [AWS CLI](https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html)
@@ -267,12 +295,13 @@ nu -c "use tests/unit/test_critical_bug_fixes.nu"
 - **Dynamic Schema**: Works with any DynamoDB table key schema
 
 ### Technical Features
-- **Functional Programming**: Pure functions, immutable data structures
-- **Production-Ready Code**: 777 lines with comprehensive AWS API compliance and robust error handling
+- **Functional Programming**: Pure functions, immutable data structures, no mutable variables
+- **Production-Ready Code**: 800+ lines with comprehensive AWS API compliance and robust error handling
 - **Zero Dependencies**: Only requires Nushell and AWS CLI
 - **Fast Operations**: Efficient scanning and writing with proper pagination
-- **Comprehensive Testing**: 66 tests covering all functionality
+- **Comprehensive Testing**: 100+ tests covering all functionality including edge cases
 - **Safe File Operations**: Automatic cleanup of temporary files even on errors
+- **Reliable AWS Integration**: Uses `complete` command for robust CLI error handling
 
 ### Data Operations
 - **Smart Type Conversion**: Automatically converts types for DynamoDB
