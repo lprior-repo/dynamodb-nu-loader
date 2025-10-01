@@ -21,10 +21,12 @@ def show_enhanced_help []: nothing -> nothing {
   print ""
   print "🔧 COMMANDS:"
   print "    snapshot <name>     Create a snapshot of the DynamoDB table"
+  print "      --dry-run         Count items exactly without saving snapshot"
+  print "      --exact-count     Use exact count in metadata (slower)"
   print "    restore <file>      Restore data from a snapshot file (JSON/CSV)"
   print "    wipe [--force]      Delete all items from the DynamoDB table"
   print "    seed                Load default seed data into the table"
-  print "    status              Show table status and item count"
+  print "    status              Show table status and approximate item count"
   print ""
   print "🚩 GLOBAL FLAGS:"
   print "    --table <name>      DynamoDB table name (required: use flag or $TABLE_NAME env var)"
@@ -40,6 +42,7 @@ def show_enhanced_help []: nothing -> nothing {
   print "    # Or use command line flags:"
   print "    nu main.nu status --table test-table --region us-east-1"
   print "    nu main.nu snapshot backup-2024 --table my-table --region us-west-2 --snapshots-dir ./backups"
+  print "    nu main.nu snapshot --dry-run --table my-table --region us-west-2  # Get exact count only"
   print "    nu main.nu restore backup-2024.json --table my-table --region us-west-2"
   print "    nu main.nu wipe --force --table my-table --region us-west-2"
   print "    nu main.nu seed --table my-table --region us-west-2"
@@ -50,6 +53,7 @@ def show_enhanced_help []: nothing -> nothing {
   print "  • CSV files are auto-detected by .csv extension"
   print "  • Create snapshots before wiping data"
   print "  • Use 'seed' to quickly set up test data"
+  print "  • Use 'snapshot --dry-run' for exact item counts without creating files"
   print ""
   print "🔗 More info: Check README.md for installation and setup"
 }
@@ -60,6 +64,32 @@ def main []: nothing -> nothing {
 }
 
 # Enhanced Error Handling Functions
+def with_temp_file [
+  data: any
+  operation: closure
+]: nothing -> any {
+  let temp_file = $"/tmp/dynamodb_nu_loader_(random chars --length 12).json"
+  
+  try {
+    # Save data to temp file
+    $data | to json | save $temp_file
+    
+    # Execute operation with temp file
+    do $operation $temp_file
+  } catch { |error|
+    # Ensure cleanup even on error
+    if ($temp_file | path exists) {
+      try { rm $temp_file } catch { |_| }
+    }
+    # Re-throw the original error
+    error make { msg: $error.msg }
+  }
+  
+  # Normal cleanup
+  if ($temp_file | path exists) {
+    try { rm $temp_file } catch { |_| }
+  }
+}
 def handle_aws_error [
   error_output: string
   operation: string
@@ -253,24 +283,13 @@ def scan_table_page [
     error make { msg: "AWS region must be provided via --region flag or AWS_REGION environment variable" }
   }
   
-  let scan_command = if $exclusive_start_key == null {
-    $"aws dynamodb scan --table-name ($table_name) --region ($aws_region)"
-  } else {
-    let temp_file = $"/tmp/exclusive_start_key_(random chars --length 8).json"
-    $exclusive_start_key | to json | save $temp_file
-    let command = $"aws dynamodb scan --table-name ($table_name) --region ($aws_region) --exclusive-start-key file://($temp_file)"
-    $command
-  }
-  
   try {
     let result = if $exclusive_start_key == null {
       ^aws dynamodb scan --table-name $table_name --region $aws_region
     } else {
-      let temp_file = $"/tmp/exclusive_start_key_(random chars --length 8).json"
-      $exclusive_start_key | to json | save $temp_file
-      let command_result = ^aws dynamodb scan --table-name $table_name --region $aws_region --exclusive-start-key $"file://($temp_file)"
-      rm $temp_file
-      $command_result
+      with_temp_file $exclusive_start_key { |temp_file|
+        ^aws dynamodb scan --table-name $table_name --region $aws_region --exclusive-start-key $"file://($temp_file)"
+      }
     }
     
     let exit_code = $env.LAST_EXIT_CODE
@@ -407,22 +426,19 @@ def batch_write_with_retry [
       }
     }
     
-    let temp_file = $"/tmp/batch_request_(random chars --length 8).json"
-    $batch_request | to json | save $temp_file
-    
     let result = try {
-      let aws_result = ^aws dynamodb batch-write-item --cli-input-json $"file://($temp_file)" --region $aws_region
-      let exit_code = $env.LAST_EXIT_CODE
-      rm $temp_file
-      
-      if $exit_code != 0 {
-        { success: false, error: $"Batch write failed with exit code: ($exit_code)" }
-      } else {
-        let response = $aws_result | from json
-        { success: true, response: $response }
+      with_temp_file $batch_request { |temp_file|
+        let aws_result = ^aws dynamodb batch-write-item --cli-input-json $"file://($temp_file)" --region $aws_region
+        let exit_code = $env.LAST_EXIT_CODE
+        
+        if $exit_code != 0 {
+          { success: false, error: $"Batch write failed with exit code: ($exit_code)" }
+        } else {
+          let response = $aws_result | from json
+          { success: true, response: $response }
+        }
       }
     } catch { |error|
-      rm $temp_file
       { success: false, error: $error.msg }
     }
     
@@ -575,18 +591,37 @@ def save_snapshot [
   table_name: string
   file: string
   --region: string  # AWS region
+  --exact-count: bool = false  # Use exact count (slower, more expensive)
 ]: nothing -> nothing {
   let aws_region = $region | default $env.AWS_REGION?
   
   if $aws_region == null {
     error make { msg: "AWS region must be provided via --region flag or AWS_REGION environment variable" }
   }
+  
+  # Get table description for metadata
+  let description_result = ^aws dynamodb describe-table --table-name $table_name --region $aws_region
+  let exit_code = $env.LAST_EXIT_CODE
+  
+  if $exit_code != 0 {
+    error make { msg: $"Failed to describe table ($table_name). Exit code: ($exit_code)" }
+  }
+  
+  let description = $description_result | from json
   let items = scan_table $table_name --region $aws_region
+  
+  let item_count = if $exact_count {
+    ($items | length)
+  } else {
+    $description.Table.ItemCount
+  }
+  
   let snapshot = {
     metadata: {
       table_name: $table_name,
       timestamp: (date now | format date "%Y-%m-%d %H:%M:%S"),
-      item_count: ($items | length),
+      item_count: $item_count,
+      item_count_exact: $exact_count,
       tool: "dynamodb-nu-loader",
       version: "1.0"
     },
@@ -602,6 +637,8 @@ def "main snapshot" [
   --table: string  # DynamoDB table name
   --region: string  # AWS region
   --snapshots-dir: string  # Snapshots directory
+  --dry-run: bool = false  # Count items exactly but don't save snapshot
+  --exact-count: bool = false  # Use exact count (slower, more expensive)
 ]: nothing -> nothing {
   let table_name = $table | default $env.TABLE_NAME?
   let aws_region = $region | default $env.AWS_REGION?
@@ -613,6 +650,14 @@ def "main snapshot" [
   
   if $aws_region == null {
     error make { msg: "AWS region must be provided via --region flag or AWS_REGION environment variable" }
+  }
+  
+  if $dry_run {
+    print $"Performing dry run - counting items in table ($table_name)..."
+    let items = scan_table $table_name --region $aws_region
+    let exact_count = ($items | length)
+    print $"Exact item count: ($exact_count)"
+    return
   }
   
   if $snapshots_directory == null {
@@ -633,7 +678,7 @@ def "main snapshot" [
     $"($snapshots_directory)/snapshot_($timestamp).json"
   }
   
-  save_snapshot $table_name $output_file --region $aws_region
+  save_snapshot $table_name $output_file --region $aws_region --exact-count $exact_count
   let items = scan_table $table_name --region $aws_region
   print $"Snapshot saved to ($output_file) (JSON format, ($items | length) items)"
 }
@@ -755,21 +800,23 @@ def "main status" [
     }
     
     let description = $result | from json
-    let items = scan_table $table_name --region $aws_region
     
     let table_info = {
       table_name: $description.Table.TableName,
       status: $description.Table.TableStatus,
-      item_count: ($items | length),
+      item_count_approx: $description.Table.ItemCount,
       creation_time: $description.Table.CreationDateTime,
       size_bytes: $description.Table.TableSizeBytes
     }
     
     print $"Table: ($table_info.table_name)"
     print $"Status: ($table_info.status)"
-    print $"Items: ($table_info.item_count)"
+    print $"Items (approximate): ($table_info.item_count_approx)"
     print $"Size: ($table_info.size_bytes) bytes"
     print $"Created: ($table_info.creation_time)"
+    print ""
+    print "ℹ️  Item count is approximate and updated by AWS every ~6 hours"
+    print "   For exact count, use: nu main.nu snapshot --dry-run"
     
     $table_info
   } catch { |error|

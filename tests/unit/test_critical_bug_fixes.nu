@@ -47,17 +47,17 @@ def test_convert_to_dynamodb_value_handles_mixed_type_list [] {
     let result = convert_to_dynamodb_value $test_list
     
     let list_items = $result | get "L"
-    assert ($list_items | length) == 3 "Mixed type list should use L (List) format"
-    assert ($list_items | first | get "S") == "apple" "First item should be string"
-    assert ($list_items | get 1 | get "N") == "42" "Second item should be number"
-    assert ($list_items | get 2 | get "BOOL") == true "Third item should be boolean"
+    assert (($list_items | length) == 3) "Mixed type list should use L (List) format"
+    assert (($list_items | first | get "S") == "apple") "First item should be string"
+    assert (($list_items | get 1 | get "N") == "42") "Second item should be number"
+    assert (($list_items | get 2 | get "BOOL") == true) "Third item should be boolean"
 }
 
 #[test]
 def test_convert_to_dynamodb_value_handles_empty_list [] {
     let result = convert_to_dynamodb_value []
     
-    assert ($result | get "L") == [] "Empty list should use L (List) format with empty array"
+    assert (($result | get "L") == []) "Empty list should use L (List) format with empty array"
 }
 
 #[test]
@@ -124,10 +124,10 @@ def test_convert_from_dynamodb_value_handles_list [] {
     }
     let result = convert_from_dynamodb_value $dynamodb_value
     
-    assert ($result | length) == 3 "List should have 3 items"
-    assert ($result | first) == "apple" "First item should be string"
-    assert ($result | get 1) == 42 "Second item should be number"
-    assert ($result | get 2) == true "Third item should be boolean"
+    assert (($result | length) == 3) "List should have 3 items"
+    assert (($result | first) == "apple") "First item should be string"
+    assert (($result | get 1) == 42) "Second item should be number"
+    assert (($result | get 2) == true) "Third item should be boolean"
 }
 
 #[test]
@@ -150,8 +150,8 @@ def test_get_key_attributes_for_item_with_string_keys [] {
     
     let result = get_key_attributes_for_item $item $key_schema $attribute_definitions
     
-    assert ($result.user_id.S == "user123") "Hash key should be extracted as string"
-    assert ($result.timestamp.S == "2024-01-01") "Range key should be extracted as string"
+    assert (($result.user_id.S) == "user123") "Hash key should be extracted as string"
+    assert (($result.timestamp.S) == "2024-01-01") "Range key should be extracted as string"
     assert (($result | columns | length) == 2) "Only key attributes should be included"
 }
 
@@ -175,8 +175,8 @@ def test_get_key_attributes_for_item_with_number_keys [] {
     
     let result = get_key_attributes_for_item $item $key_schema $attribute_definitions
     
-    assert ($result.pk.N == "123") "Numeric hash key should be converted to string"
-    assert ($result.sk.N == "456") "Numeric range key should be converted to string"
+    assert (($result.pk.N) == "123") "Numeric hash key should be converted to string"
+    assert (($result.sk.N) == "456") "Numeric range key should be converted to string"
     assert (($result | columns | length) == 2) "Only key attributes should be included"
 }
 
@@ -197,8 +197,8 @@ def test_get_key_attributes_for_item_with_single_key [] {
     
     let result = get_key_attributes_for_item $item $key_schema $attribute_definitions
     
-    assert ($result.id.S == "item123") "Single hash key should be extracted"
+    assert (($result.id.S) == "item123") "Single hash key should be extracted"
     assert (($result | columns | length) == 1) "Only hash key should be included"
 }
 
-print "✅ All critical bug fix tests passed!"
+# All tests completed - no print needed in module

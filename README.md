@@ -53,18 +53,27 @@ nu main.nu seed custom-data.json   # Uses custom file
 ```
 
 ### `status`
-Show table information and item count.
+Show table information and approximate item count (optimized for speed).
 ```bash
 nu main.nu status
 nu main.nu status --table my-table --region us-west-2
 ```
+
+**Performance Note**: Uses DynamoDB's `ItemCount` from `DescribeTable` which is updated approximately every 6 hours. For exact counts, use `snapshot --dry-run`.
 
 ### `snapshot [name]`
 Create a backup of your table data.
 ```bash
 nu main.nu snapshot                # Auto-generates timestamped name
 nu main.nu snapshot my-backup      # Creates my-backup.json
+nu main.nu snapshot --dry-run      # Count items exactly without saving
+nu main.nu snapshot backup --exact-count  # Use exact count in metadata (slower)
 ```
+
+**Performance Options**:
+- **Default**: Uses approximate `ItemCount` from DynamoDB for fast snapshots
+- **`--exact-count`**: Scans table for precise count (slower, more expensive)
+- **`--dry-run`**: Only counts items without creating snapshot file
 
 **Output format**:
 ```json
@@ -73,6 +82,7 @@ nu main.nu snapshot my-backup      # Creates my-backup.json
     "table_name": "my-table",
     "timestamp": "2024-01-01 12:00:00",
     "item_count": 100,
+    "item_count_exact": false,
     "tool": "dynamodb-nu-loader",
     "version": "1.0"
   },
@@ -126,11 +136,25 @@ nu main.nu snapshot backup --snapshots-dir ./backups
 ## 📁 File Formats
 
 ### CSV Format
+CSV files are automatically processed with type inference:
+
 ```csv
-id,sort_key,name,email
-user-1,USER,Alice,alice@example.com
-user-2,USER,Bob,bob@example.com
+id,sort_key,name,email,age,active
+user-1,USER,Alice,alice@example.com,25,true
+user-2,USER,Bob,bob@example.com,30,false
 ```
+
+**Type Inference Rules**:
+- **Numbers**: Values like `25`, `30.5` → DynamoDB Number type
+- **Booleans**: Values `true`, `false` → DynamoDB Boolean type  
+- **Strings**: All other values → DynamoDB String type
+- **Empty/null**: Empty cells → DynamoDB NULL type
+
+**Best Practices for CSV**:
+- Use consistent data types in each column
+- Quote strings that might be interpreted as numbers (e.g., `"001"` for ID fields)
+- Use lowercase `true`/`false` for boolean values
+- Leave cells empty for null values rather than using "null" strings
 
 ### Raw JSON Array
 ```json
@@ -248,6 +272,7 @@ nu -c "use tests/unit/test_critical_bug_fixes.nu"
 - **Zero Dependencies**: Only requires Nushell and AWS CLI
 - **Fast Operations**: Efficient scanning and writing with proper pagination
 - **Comprehensive Testing**: 66 tests covering all functionality
+- **Safe File Operations**: Automatic cleanup of temporary files even on errors
 
 ### Data Operations
 - **Smart Type Conversion**: Automatically converts types for DynamoDB
@@ -336,8 +361,17 @@ Your AWS credentials need these DynamoDB permissions:
 
 ### Performance Optimization
 ```bash
+# Fast status checks using approximate counts (updated ~6 hours)
+nu main.nu status
+
+# Get exact count only when needed (slower)
+nu main.nu snapshot --dry-run
+
 # For large tables, create snapshots during low-traffic periods
 nu main.nu snapshot large-backup
+
+# Use exact counts only when precision is critical
+nu main.nu snapshot backup --exact-count
 
 # Use CSV for fastest import/export of simple data
 nu main.nu restore data.csv

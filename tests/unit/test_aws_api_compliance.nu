@@ -264,4 +264,4 @@ def test_retryable_error_identification [] {
     }
 }
 
-print "✅ All AWS API compliance tests passed!"
+# All tests completed - no print needed in module
