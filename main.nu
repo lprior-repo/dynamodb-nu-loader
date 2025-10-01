@@ -1,10 +1,27 @@
 #!/usr/bin/env nu
+# ^ Shebang line - tells the system to use Nushell to execute this script
 
 # DynamoDB Nu-Loader: Minimal test data management tool
 # Provides snapshot, restore, wipe, and seed operations for DynamoDB tables
+#
+# ⚠️ IMPORTANT - COMMANDS THAT WIPE TABLE DATA:
+# - 'restore <file>': CLEARS ALL DATA before restoring from file
+# - 'seed [file]': CLEARS ALL DATA before loading seed data  
+# - 'wipe --force': DELETES ALL DATA (this is the explicit purpose)
+#
+# ✅ SAFE COMMANDS (no data loss):
+# - 'status': Only reads table information
+# - 'snapshot [name]': Only reads data to create backup files
+# - 'snapshot --dry-run': Only counts items, creates no files
 
-# Enhanced help function
+# Enhanced help function - displays comprehensive usage information
+# In Nushell:
+# - 'def' defines a function
+# - []: nothing -> nothing means no parameters and returns nothing (void)
+# - Functions are pure by default - they don't modify global state
 def show_enhanced_help []: nothing -> nothing {
+  # 'print' command outputs text to stdout
+  # Nushell supports Unicode characters and emojis in strings
   print "🧩 DynamoDB Nu-Loader v1.0"
   print "=========================="
   print ""
@@ -59,44 +76,67 @@ def show_enhanced_help []: nothing -> nothing {
 }
 
 # Show enhanced help when called without arguments
+# 'main' is a special function name - it's called when script runs without subcommands
 def main []: nothing -> nothing {
   show_enhanced_help
 }
 
 # Enhanced Error Handling Functions
+
+# Creates a temporary file, executes an operation with it, then cleans up
+# Key Nushell concepts:
+# - 'closure' type represents a block of code that can be passed around
+# - 'any' type means the parameter accepts any data type
+# - Function handles both success and error cases with proper cleanup
 def with_temp_file [
-  data: any
-  operation: closure
+  data: any           # Data to write to temp file
+  operation: closure  # Block of code to execute with the temp file
 ]: nothing -> any {
+  # Create unique temp file name using string interpolation ($"...")
+  # 'random chars' generates random characters for uniqueness
   let temp_file = $"/tmp/dynamodb_nu_loader_(random chars --length 12).json"
   
+  # 'try' block for error handling - like try/catch in other languages
   let result = try {
-    # Save data to temp file
+    # Nushell pipeline: data flows left to right through '|' operator
+    # $data | to json converts data to JSON string
+    # | save $temp_file writes the JSON to the file
     $data | to json | save $temp_file
     
-    # Execute operation with temp file
+    # 'do' executes the closure (operation) with the temp_file as argument
     do $operation $temp_file
   } catch { |error|
-    # Ensure cleanup even on error
+    # Cleanup on error - ensure temp file is removed
+    # 'path exists' checks if file exists
     if ($temp_file | path exists) {
+      # Nested try/catch - ignore cleanup errors (|_| discards error)
       try { rm $temp_file } catch { |_| }
     }
-    # Re-throw the original error
+    # 'error make' creates a new error with custom message
+    # Re-throw the original error to preserve error information
     error make { msg: $error.msg }
   }
   
-  # Normal cleanup
+  # Normal cleanup - remove temp file after successful operation
   if ($temp_file | path exists) {
     try { rm $temp_file } catch { |_| }
   }
   
+  # Return the result from the operation
+  # In Nushell, the last expression is automatically returned
   $result
 }
+
+# Parses AWS CLI error output and provides helpful error messages
+# This function improves error messages from cryptic AWS errors to user-friendly explanations
 def handle_aws_error [
-  error_output: string
-  operation: string
+  error_output: string  # Raw error output from AWS CLI
+  operation: string     # Name of operation that failed (for context)
 ]: nothing -> nothing {
   # Parse common AWS error patterns from CLI output
+  # 'str contains' checks if a string contains a substring
+  # Each 'if' checks for specific AWS error patterns and provides helpful explanations
+  # String interpolation: $"text ($variable)" embeds variable values in strings
   if ($error_output | str contains "ResourceNotFoundException") {
     error make { 
       msg: $"Table not found during ($operation). Please verify the table name exists and is in the correct region."
@@ -138,36 +178,46 @@ def handle_aws_error [
       msg: $"Unrecognized client during ($operation). AWS credentials may be invalid or expired. Run 'aws configure' to set up credentials."
     }
   } else {
-    # Generic error with the original output
+    # Generic fallback error with the original AWS output
     error make { 
       msg: $"AWS operation failed during ($operation): ($error_output)"
     }
   }
 }
 
+# Validates that AWS credentials are properly configured
+# ✅ SAFE FUNCTION: Only reads AWS account information, no data modification
 def validate_aws_credentials []: nothing -> nothing {
   try {
+    # '^' prefix runs external command (aws CLI) instead of Nushell built-ins
+    # 'complete' captures both stdout, stderr, and exit code as a record
     let result = (^aws sts get-caller-identity | complete)
     
+    # Check exit code - 0 means success, non-zero means error
     if $result.exit_code != 0 {
       handle_aws_error $result.stderr "validate-credentials"
     }
     
     print "✅ AWS credentials validated"
   } catch { |error|
+    # Catch any other errors (like aws CLI not installed)
     error make { 
       msg: $"Failed to validate AWS credentials: ($error.msg). Ensure AWS CLI is installed and credentials are configured."
     }
   }
 }
 
+# Validates that a DynamoDB table exists and is accessible
+# ✅ SAFE FUNCTION: Only reads table metadata, no data modification
 def validate_table_exists [
-  table_name: string
-  region: string
+  table_name: string  # Name of DynamoDB table to check
+  region: string      # AWS region where table should exist
 ]: nothing -> nothing {
   try {
+    # Call AWS CLI to describe the table - this checks existence and permissions
     let result = (^aws dynamodb describe-table --table-name $table_name --region $region | complete)
     
+    # Check if the AWS CLI command succeeded
     if $result.exit_code != 0 {
       handle_aws_error $result.stderr "describe-table"
     }
@@ -181,24 +231,36 @@ def validate_table_exists [
 }
 
 # AWS DynamoDB Operations
+
+# Gets the key schema (primary key structure) for a DynamoDB table
+# ✅ SAFE FUNCTION: Only reads table schema, no data modification
 def get_table_key_schema [
-  table_name: string
-  --region: string  # AWS region
+  table_name: string    # DynamoDB table name
+  --region: string      # AWS region (optional flag, uses env var if not provided)
 ]: nothing -> record {
+  # '| default' provides fallback value if $region is null
+  # '$env.AWS_REGION?' safely accesses environment variable (? means don't error if missing)
   let aws_region = $region | default $env.AWS_REGION?
   
+  # Input validation - ensure we have a region before making AWS calls
   if $aws_region == null {
     error make { msg: "AWS region must be provided via --region flag or AWS_REGION environment variable" }
   }
   
   try {
+    # Get detailed table information from AWS
     let result = (^aws dynamodb describe-table --table-name $table_name --region $aws_region | complete)
     
     if $result.exit_code != 0 {
       handle_aws_error $result.stderr "describe-table"
     }
     
+    # Parse JSON response from AWS CLI
+    # 'from json' converts JSON string to Nushell data structures
     let table_description = $result.stdout | from json
+    
+    # Return a record (like a struct/object) with key schema information
+    # This data is needed for building proper delete requests later
     {
       key_schema: $table_description.Table.KeySchema,
       attribute_definitions: $table_description.Table.AttributeDefinitions
@@ -208,36 +270,51 @@ def get_table_key_schema [
   }
 }
 
+# Extracts key attributes from an item for DynamoDB delete operations
+# DynamoDB requires exact key values to delete items
 def get_key_attributes_for_item [
-  item: record
-  key_schema: list<record>
-  attribute_definitions: list<record>
+  item: record                        # The item to extract keys from
+  key_schema: list<record>           # Table's key schema (partition key, sort key)
+  attribute_definitions: list<record> # Table's attribute definitions (types)
 ]: nothing -> record {
   # Build the key object dynamically based on the table's schema
+  # 'reduce -f {}' starts with empty record and builds up the key object
+  # Each iteration adds one key attribute to the accumulator
   $key_schema | reduce -f {} { |key_def, acc|
     let attr_name = $key_def.AttributeName
     let attr_value = $item | get $attr_name
     
     # Find the attribute type from the table definition
+    # 'where' filters records, 'first' gets the first match
     let attr_type = ($attribute_definitions | where AttributeName == $attr_name | first).AttributeType
     
+    # Convert to DynamoDB's format based on attribute type
+    # DynamoDB uses type-annotated values: {"S": "string"}, {"N": "number"}, etc.
     let dynamodb_value = match $attr_type {
-      "S" => { "S": ($attr_value | into string) },
-      "N" => { "N": ($attr_value | into string) },
-      "B" => { "B": $attr_value }
+      "S" => { "S": ($attr_value | into string) },  # String type
+      "N" => { "N": ($attr_value | into string) },  # Number type (stored as string)
+      "B" => { "B": $attr_value }                   # Binary type
     }
     
+    # 'insert' adds a new field to the record
     $acc | insert $attr_name $dynamodb_value
   }
 }
 
+# Converts DynamoDB's type-annotated values back to normal Nushell values
+# DynamoDB stores data as {"S": "text"}, {"N": "123"}, etc. - this converts back to "text", 123
+# ✅ SAFE FUNCTION: Pure data conversion, no side effects
 def convert_from_dynamodb_value [dynamodb_value: record]: nothing -> any {
+  # Get the type key (S, N, BOOL, etc.) from the DynamoDB value
+  # 'columns' returns the field names of a record
   let value_type = ($dynamodb_value | columns | first)
   let value_data = $dynamodb_value | get $value_type
   
+  # Handle each DynamoDB type appropriately
+  # 'match' is like switch/case in other languages
   match $value_type {
-    "S" => $value_data,
-    "N" => {
+    "S" => $value_data,                               # String - return as-is
+    "N" => {                                          # Number - parse back to int/float
       # Try to parse as int first, then float
       try {
         $value_data | into int
@@ -245,20 +322,21 @@ def convert_from_dynamodb_value [dynamodb_value: record]: nothing -> any {
         $value_data | into float
       }
     },
-    "BOOL" => $value_data,
-    "NULL" => null,
-    "SS" => $value_data,
-    "NS" => ($value_data | each { |n| 
+    "BOOL" => $value_data,                           # Boolean - return as-is
+    "NULL" => null,                                   # Null value
+    "SS" => $value_data,                             # String Set - return as list
+    "NS" => ($value_data | each { |n|                # Number Set - convert each number
       try {
         $n | into int
       } catch {
         $n | into float
       }
     }),
-    "BS" => $value_data,
-    "L" => ($value_data | each { |item| convert_from_dynamodb_value $item }),
-    "M" => {
+    "BS" => $value_data,                             # Binary Set - return as-is
+    "L" => ($value_data | each { |item| convert_from_dynamodb_value $item }), # List - recursive conversion
+    "M" => {                                         # Map (nested object) - recursive conversion
       # Convert nested map recursively
+      # 'transpose' converts record to list of {key, value} records
       let converted_map = ($value_data | transpose key value | reduce -f {} { |row, acc|
         let converted_value = convert_from_dynamodb_value $row.value
         $acc | insert $row.key $converted_value
@@ -269,10 +347,12 @@ def convert_from_dynamodb_value [dynamodb_value: record]: nothing -> any {
   }
 }
 
+# Scans one page of a DynamoDB table (DynamoDB limits to 1MB per scan)
+# ✅ SAFE FUNCTION: Only reads data, no modifications
 def scan_table_page [
-  table_name: string
-  --region: string  # AWS region
-  --exclusive-start-key: any  # For pagination (can be null or record)
+  table_name: string            # Name of DynamoDB table to scan
+  --region: string              # AWS region
+  --exclusive-start-key: any    # For pagination (can be null or record)
 ]: nothing -> record {
   let aws_region = $region | default $env.AWS_REGION?
   
@@ -368,48 +448,56 @@ def scan_table [
   $final_result.items
 }
 
+# Converts normal Nushell values to DynamoDB's type-annotated format
+# DynamoDB requires all values to have explicit types: {"S": "text"}, {"N": "123"}, etc.
+# ✅ SAFE FUNCTION: Pure data conversion, no side effects
 def convert_to_dynamodb_value [value: any]: any -> record {
   if $value == null {
-    { "NULL": true }
+    { "NULL": true }  # DynamoDB null representation
   } else {
+    # 'describe' returns the type of a value as a string
     let value_type = ($value | describe)
+    
+    # Handle lists and tables (Nushell's structured data)
     if ($value_type | str starts-with "list") or ($value_type | str starts-with "table") {
-      # Handle list/table types
+      # Handle empty collections
       if ($value | length) == 0 {
-        { "L": [] }
+        { "L": [] }  # Empty List in DynamoDB
       } else {
         let first_item = ($value | first)
         let first_type = ($first_item | describe)
         
         # Check if all items are the same primitive type
+        # 'all' checks if all items in a list satisfy a condition
         let all_same_type = ($value | all { |item| ($item | describe) == $first_type })
         
         if $all_same_type {
+          # Use DynamoDB Sets for homogeneous primitive types
           match $first_type {
-            "string" => { "SS": $value },
-            "int" | "float" => { "NS": ($value | each { |n| $n | into string }) },
-            _ => { "L": ($value | each { |item| convert_to_dynamodb_value $item }) }
+            "string" => { "SS": $value },  # String Set
+            "int" | "float" => { "NS": ($value | each { |n| $n | into string }) },  # Number Set
+            _ => { "L": ($value | each { |item| convert_to_dynamodb_value $item }) }   # Mixed List
           }
         } else {
-          # Mixed types - use List format
+          # Mixed types - use List format with recursive conversion
           { "L": ($value | each { |item| convert_to_dynamodb_value $item }) }
         }
       }
     } else if ($value_type | str starts-with "record") {
-      # Convert nested record to Map (M) format
+      # Convert nested record to Map (M) format recursively
       let converted_map = ($value | transpose key value | reduce -f {} { |row, acc|
         let nested_value = convert_to_dynamodb_value $row.value
         $acc | insert $row.key $nested_value
       })
-      { "M": $converted_map }
+      { "M": $converted_map }  # Map type in DynamoDB
     } else {
       # Handle primitive types
       match $value_type {
-        "string" => { "S": $value },
-        "int" => { "N": ($value | into string) },
-        "float" => { "N": ($value | into string) },
-        "bool" => { "BOOL": $value },
-        _ => { "S": ($value | into string) }  # Fallback to string
+        "string" => { "S": $value },                        # String
+        "int" => { "N": ($value | into string) },          # Number (as string)
+        "float" => { "N": ($value | into string) },        # Number (as string)
+        "bool" => { "BOOL": $value },                      # Boolean
+        _ => { "S": ($value | into string) }               # Fallback to string
       }
     }
   }
@@ -594,30 +682,44 @@ def delete_all [
 }
 
 # Data Operations
+
+# Automatically detects file format and extracts data for processing
+# Supports both CSV and JSON formats with intelligent format detection
+# ✅ SAFE FUNCTION: Only reads files, no side effects
 def detect_and_process [file: string]: nothing -> list<record> {
+  # Check file extension for format detection
   if ($file | str ends-with ".csv") {
-    open $file  # Nushell auto-detects CSV
+    # Nushell automatically detects and parses CSV format
+    open $file
   } else {
-    # Parse as JSON - explicitly parse for files without .json extension
+    # Handle JSON files (with or without .json extension)
     let data = try {
+      # Try to parse as JSON first
       open $file | from json
     } catch {
+      # Fallback: open as raw text if JSON parsing fails
       open $file
     }
-    # Check if data is a record with 'data' field (snapshot format)
+    
+    # Handle different JSON structures:
+    # 1. Snapshot format: {"metadata": {...}, "data": [...]}
+    # 2. Raw array format: [{...}, {...}, ...]
+    # '=~' is the regex match operator
     if ($data | describe) =~ "record" and ("data" in ($data | columns)) {
-      $data.data  # JSON snapshot format
+      $data.data  # Extract data array from snapshot format
     } else {
-      $data  # Raw JSON array
+      $data       # Use raw array format as-is
     }
   }
 }
 
+# Creates a snapshot file with table data and metadata
+# ✅ SAFE FUNCTION: Only reads data, creates backup files
 def save_snapshot [
-  table_name: string
-  file: string
-  --region: string  # AWS region
-  --exact-count = false  # Use exact count (slower, more expensive)
+  table_name: string        # DynamoDB table to snapshot
+  file: string             # Output file path
+  --region: string         # AWS region
+  --exact-count = false    # Use exact count (slower, more expensive)
 ]: nothing -> nothing {
   let aws_region = $region | default $env.AWS_REGION?
   
@@ -657,13 +759,17 @@ def save_snapshot [
 }
 
 # CLI Commands
+
+# Creates a backup snapshot of all table data
+# ✅ SAFE COMMAND: Only reads data from DynamoDB, creates backup files
+# ⚠️ --dry-run flag: Counts items but doesn't create any files
 def "main snapshot" [
-  file?: string  # Output file (default: snapshots/snapshot-TIMESTAMP.json)
-  --table: string  # DynamoDB table name
-  --region: string  # AWS region
-  --snapshots-dir: string  # Snapshots directory
-  --dry-run  # Count items exactly but don't save snapshot
-  --exact-count  # Use exact count (slower, more expensive)
+  file?: string                 # Output file (default: snapshots/snapshot-TIMESTAMP.json)
+  --table: string              # DynamoDB table name  
+  --region: string             # AWS region
+  --snapshots-dir: string      # Snapshots directory
+  --dry-run                    # Count items exactly but don't save snapshot
+  --exact-count                # Use exact count (slower, more expensive)
 ]: nothing -> nothing {
   let table_name = $table | default $env.TABLE_NAME?
   let aws_region = $region | default $env.AWS_REGION?
@@ -709,9 +815,12 @@ def "main snapshot" [
   print $"Snapshot saved to ($output_file) - JSON format, ($saved_items) items"
 }
 
+# Restores table data from a backup file
+# ⚠️ DESTRUCTIVE COMMAND: CLEARS ALL EXISTING DATA before restoring
+# This command will delete every item in the table, then load data from the file
 def "main restore" [
-  file: string  # Snapshot file to restore from
-  --table: string  # DynamoDB table name
+  file: string       # Snapshot file to restore from
+  --table: string   # DynamoDB table name
   --region: string  # AWS region
 ]: nothing -> nothing {
   let table_name = $table | default $env.TABLE_NAME?
@@ -731,20 +840,27 @@ def "main restore" [
     error make { msg: $"File not found: ($file)" }
   }
   
+  # Load items from backup file (supports JSON and CSV)
   let items = detect_and_process $file
+  
+  # ⚠️ DESTRUCTIVE OPERATION: This deletes ALL existing table data
   print $"Clearing table ($table_name)..."
   delete_all $table_name --region $aws_region
   
+  # Load the backup data into the now-empty table
   let restore_count = ($items | length)
   print $"Restoring ($restore_count) items to ($table_name)..."
   batch_write $table_name $items --region $aws_region
   print "Restore completed successfully"
 }
 
+# Deletes all items from the DynamoDB table
+# ⚠️ DESTRUCTIVE COMMAND: PERMANENTLY DELETES ALL TABLE DATA
+# This is the most dangerous command - it removes every item from the table
 def "main wipe" [
-  --force (-f)  # Skip confirmation prompt
+  --force (-f)     # Skip confirmation prompt (dangerous!)
   --table: string  # DynamoDB table name
-  --region: string  # AWS region
+  --region: string # AWS region
 ]: nothing -> nothing {
   let table_name = $table | default $env.TABLE_NAME?
   let aws_region = $region | default $env.AWS_REGION?
@@ -757,8 +873,10 @@ def "main wipe" [
     error make { msg: "AWS region must be provided via --region flag or AWS_REGION environment variable" }
   }
   
+  # Safety check - require user confirmation unless --force is used
   if not $force {
     print $"Are you sure you want to delete all data from ($table_name)? y/N: " --no-newline
+    # 'input' waits for user input from stdin
     let confirm = (input)
     if $confirm != "y" {
       print "Operation cancelled"
@@ -766,15 +884,19 @@ def "main wipe" [
     }
   }
   
+  # ⚠️ DESTRUCTIVE OPERATION: This permanently deletes all table data
   print $"Wiping all data from table ($table_name)..."
   delete_all $table_name --region $aws_region
   print "Table wiped successfully"
 }
 
+# Loads test/seed data into the table
+# ⚠️ DESTRUCTIVE COMMAND: CLEARS ALL EXISTING DATA before loading seed data
+# This command is useful for setting up fresh test data for development
 def "main seed" [
-  file?: string  # Seed data file (default: seed-data.json)
+  file?: string    # Seed data file (default: seed-data.json)
   --table: string  # DynamoDB table name
-  --region: string  # AWS region
+  --region: string # AWS region
 ]: nothing -> nothing {
   let table_name = $table | default $env.TABLE_NAME?
   let aws_region = $region | default $env.AWS_REGION?
@@ -793,20 +915,25 @@ def "main seed" [
   }
   
   print $"Loading seed data from ($seed_file)..."
+  # Load seed data from file (supports JSON and CSV formats)
   let seed_data = detect_and_process $seed_file
   
+  # ⚠️ DESTRUCTIVE OPERATION: This deletes ALL existing table data first
   print $"Clearing table ($table_name)..."
   delete_all $table_name --region $aws_region
   
+  # Load the seed data into the now-empty table
   let seed_count = ($seed_data | length)
   print $"Loading ($seed_count) items into ($table_name)..."
   batch_write $table_name $seed_data --region $aws_region
   print $"Seeded ($seed_count) items successfully"
 }
 
+# Shows table information and approximate item count
+# ✅ SAFE COMMAND: Only reads table metadata, no data modification
 def "main status" [
   --table: string  # DynamoDB table name
-  --region: string  # AWS region
+  --region: string # AWS region
 ]: nothing -> nothing {
   let table_name = $table | default $env.TABLE_NAME?
   let aws_region = $region | default $env.AWS_REGION?
