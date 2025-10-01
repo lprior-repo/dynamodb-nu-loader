@@ -145,7 +145,7 @@ def handle_aws_error [
 
 def validate_aws_credentials []: nothing -> nothing {
   try {
-    let result = (complete { ^aws sts get-caller-identity })
+    let result = (^aws sts get-caller-identity | complete)
     
     if $result.exit_code != 0 {
       handle_aws_error $result.stderr "validate-credentials"
@@ -164,7 +164,7 @@ def validate_table_exists [
   region: string
 ]: nothing -> nothing {
   try {
-    let result = (complete { ^aws dynamodb describe-table --table-name $table_name --region $region })
+    let result = (^aws dynamodb describe-table --table-name $table_name --region $region | complete)
     
     if $result.exit_code != 0 {
       handle_aws_error $result.stderr "describe-table"
@@ -190,7 +190,7 @@ def get_table_key_schema [
   }
   
   try {
-    let result = (complete { ^aws dynamodb describe-table --table-name $table_name --region $aws_region })
+    let result = (^aws dynamodb describe-table --table-name $table_name --region $aws_region | complete)
     
     if $result.exit_code != 0 {
       handle_aws_error $result.stderr "describe-table"
@@ -280,10 +280,10 @@ def scan_table_page [
   
   try {
     let result = if $exclusive_start_key == null {
-      (complete { ^aws dynamodb scan --table-name $table_name --region $aws_region })
+      (^aws dynamodb scan --table-name $table_name --region $aws_region | complete)
     } else {
       with_temp_file $exclusive_start_key { |temp_file|
-        (complete { ^aws dynamodb scan --table-name $table_name --region $aws_region --exclusive-start-key $"file://($temp_file)" })
+        (^aws dynamodb scan --table-name $table_name --region $aws_region --exclusive-start-key $"file://($temp_file)" | complete)
       }
     }
     
@@ -328,7 +328,7 @@ def scan_table_recursive [
     page_count: ($accumulator.page_count + 1)
   }
   
-  print $"  Page ($updated_accumulator.page_count): Found ($page_result.count) items (scanned ($page_result.scanned_count))"
+  print $"  Page ($updated_accumulator.page_count): Found ($page_result.count) items \(scanned ($page_result.scanned_count)\)"
   
   if $page_result.last_evaluated_key == null {
     $updated_accumulator
@@ -357,7 +357,8 @@ def scan_table [
   
   let final_result = scan_table_recursive $table_name $aws_region $initial_accumulator
   
-  print $"Scan complete: ($final_result.items | length) total items across ($final_result.page_count) pages"
+  let total_items = ($final_result.items | length)
+  print $"Scan complete: ($total_items) total items across ($final_result.page_count) pages"
   $final_result.items
 }
 
@@ -421,7 +422,8 @@ def batch_write_recursive [
   }
   
   if $retry_count > $max_retries {
-    error make { msg: $"Failed to process ($remaining_items | length) items after ($max_retries) retries" }
+    let remaining_count = ($remaining_items | length)
+    error make { msg: $"Failed to process ($remaining_count) items after ($max_retries) retries" }
   }
   
   let batch_request = {
@@ -432,7 +434,7 @@ def batch_write_recursive [
   
   let result = try {
     with_temp_file $batch_request { |temp_file|
-      let aws_result = (complete { ^aws dynamodb batch-write-item --cli-input-json $"file://($temp_file)" --region $aws_region })
+      let aws_result = (^aws dynamodb batch-write-item --cli-input-json $"file://($temp_file)" --region $aws_region | complete)
       
       if $aws_result.exit_code != 0 {
         { success: false, error: $"Batch write failed: ($aws_result.stderr)" }
@@ -454,7 +456,9 @@ def batch_write_recursive [
       let new_remaining_items = ($unprocessed | get $table_name)
       
       if ($new_remaining_items | length) > 0 {
-        print $"  Retrying ($new_remaining_items | length) unprocessed items (attempt ($retry_count + 1)/($max_retries))"
+        let new_count = ($new_remaining_items | length)
+        let attempt_num = ($retry_count + 1)
+        print $"  Retrying ($new_count) unprocessed items (attempt ($attempt_num)/($max_retries))"
         
         # Exponential backoff: wait 2^retry_count seconds
         let wait_time = ([1, 2, 4, 8, 16] | get $retry_count)
@@ -507,7 +511,8 @@ def batch_write [
     error make { msg: "AWS region must be provided via --region flag or AWS_REGION environment variable" }
   }
   
-  print $"Writing ($items | length) items to ($table_name)..."
+  let items_count = ($items | length)
+  print $"Writing ($items_count) items to ($table_name)..."
   
   let batches = ($items | chunks 25)
   let total_batches = ($batches | length)
@@ -531,7 +536,7 @@ def batch_write [
     batch_write_with_retry $table_name $dynamodb_items --region $aws_region
   } | ignore
   
-  print $"Successfully wrote all ($items | length) items to ($table_name)"
+  print $"Successfully wrote all ($items_count) items to ($table_name)"
 }
 
 def delete_all [
@@ -558,7 +563,8 @@ def delete_all [
     return
   }
   
-  print $"Deleting ($items | length) items from ($table_name)..."
+  let items_to_delete = ($items | length)
+  print $"Deleting ($items_to_delete) items from ($table_name)..."
   let batches = ($items | chunks 25)
   
   let total_batches = ($batches | length)
@@ -587,8 +593,8 @@ def detect_and_process [file: string]: nothing -> list<record> {
   if ($file | str ends-with ".csv") {
     open $file  # Nushell auto-detects CSV
   } else {
-    # Parse as JSON
-    let data = open $file | from json
+    # Parse as JSON (Nushell auto-detects)
+    let data = open $file
     # Check if data is a record with 'data' field (snapshot format)
     if ($data | describe) =~ "record" and ("data" in ($data | columns)) {
       $data.data  # JSON snapshot format
@@ -602,7 +608,7 @@ def save_snapshot [
   table_name: string
   file: string
   --region: string  # AWS region
-  --exact-count: bool = false  # Use exact count (slower, more expensive)
+  --exact-count = false  # Use exact count (slower, more expensive)
 ]: nothing -> nothing {
   let aws_region = $region | default $env.AWS_REGION?
   
@@ -611,7 +617,7 @@ def save_snapshot [
   }
   
   # Get table description for metadata
-  let description_result = (complete { ^aws dynamodb describe-table --table-name $table_name --region $aws_region })
+  let description_result = (^aws dynamodb describe-table --table-name $table_name --region $aws_region | complete)
   
   if $description_result.exit_code != 0 {
     handle_aws_error $description_result.stderr "describe-table"
@@ -647,8 +653,8 @@ def "main snapshot" [
   --table: string  # DynamoDB table name
   --region: string  # AWS region
   --snapshots-dir: string  # Snapshots directory
-  --dry-run: bool = false  # Count items exactly but don't save snapshot
-  --exact-count: bool = false  # Use exact count (slower, more expensive)
+  --dry-run = false  # Count items exactly but don't save snapshot
+  --exact-count = false  # Use exact count (slower, more expensive)
 ]: nothing -> nothing {
   let table_name = $table | default $env.TABLE_NAME?
   let aws_region = $region | default $env.AWS_REGION?
@@ -690,7 +696,8 @@ def "main snapshot" [
   
   save_snapshot $table_name $output_file --region $aws_region --exact-count $exact_count
   let items = scan_table $table_name --region $aws_region
-  print $"Snapshot saved to ($output_file) (JSON format, ($items | length) items)"
+  let saved_items = ($items | length)
+  print $"Snapshot saved to ($output_file) (JSON format, ($saved_items) items)"
 }
 
 def "main restore" [
@@ -719,7 +726,8 @@ def "main restore" [
   print $"Clearing table ($table_name)..."
   delete_all $table_name --region $aws_region
   
-  print $"Restoring ($items | length) items to ($table_name)..."
+  let restore_count = ($items | length)
+  print $"Restoring ($restore_count) items to ($table_name)..."
   batch_write $table_name $items --region $aws_region
   print "Restore completed successfully"
 }
@@ -781,15 +789,16 @@ def "main seed" [
   print $"Clearing table ($table_name)..."
   delete_all $table_name --region $aws_region
   
-  print $"Loading ($seed_data | length) items into ($table_name)..."
+  let seed_count = ($seed_data | length)
+  print $"Loading ($seed_count) items into ($table_name)..."
   batch_write $table_name $seed_data --region $aws_region
-  print $"Seeded ($seed_data | length) items successfully"
+  print $"Seeded ($seed_count) items successfully"
 }
 
 def "main status" [
   --table: string  # DynamoDB table name
   --region: string  # AWS region
-]: nothing -> record {
+]: nothing -> nothing {
   let table_name = $table | default $env.TABLE_NAME?
   let aws_region = $region | default $env.AWS_REGION?
   
@@ -802,13 +811,13 @@ def "main status" [
   }
   
   try {
-    let result = (complete { ^aws dynamodb describe-table --table-name $table_name --region $aws_region })
+    let result = (^aws dynamodb describe-table --table-name $table_name --region $aws_region | complete)
     
     if $result.exit_code != 0 {
       handle_aws_error $result.stderr "describe-table"
     }
     
-    let description = $result.stdout | from json
+    let description = ($result.stdout | from json)
     
     let table_info = {
       table_name: $description.Table.TableName,
@@ -827,7 +836,7 @@ def "main status" [
     print "ℹ️  Item count is approximate and updated by AWS every ~6 hours"
     print "   For exact count, use: nu main.nu snapshot --dry-run"
     
-    $table_info
+    # Function completed successfully
   } catch { |error|
     error make { msg: $"Error getting table status for ($table_name): ($error.msg)" }
   }
