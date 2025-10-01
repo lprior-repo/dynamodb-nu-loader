@@ -6,7 +6,7 @@
 use ../helpers/test_utils.nu *
 
 # Test edge cases for scan_table_recursive function
-#[test]
+@test
 def test_scan_table_recursive_empty_table [] {
     # Test the recursive scanning function with empty table scenario
     let empty_accumulator = {
@@ -22,7 +22,7 @@ def test_scan_table_recursive_empty_table [] {
     assert ($empty_accumulator.page_count == 0) "Initial page count should be zero"
 }
 
-#[test]
+@test
 def test_scan_table_recursive_accumulator_update [] {
     # Test accumulator update logic
     let initial_accumulator = {
@@ -44,7 +44,7 @@ def test_scan_table_recursive_accumulator_update [] {
     assert ($updated_accumulator.page_count == 2) "Should have correct page count"
 }
 
-#[test]
+@test
 def test_batch_write_recursive_empty_items [] {
     # Test batch write with empty items list
     let empty_items = []
@@ -53,7 +53,7 @@ def test_batch_write_recursive_empty_items [] {
     assert (($empty_items | length) == 0) "Empty items list should have zero length"
 }
 
-#[test]
+@test
 def test_batch_write_recursive_retry_logic [] {
     # Test retry count incrementation logic
     let initial_retry_count = 0
@@ -64,7 +64,7 @@ def test_batch_write_recursive_retry_logic [] {
     assert (($max_retries + 1) > $max_retries) "Exceeding max retries should fail condition"
 }
 
-#[test]
+@test
 def test_exponential_backoff_edge_cases [] {
     # Test exponential backoff calculation edge cases
     let wait_times = [1, 2, 4, 8, 16]
@@ -78,7 +78,7 @@ def test_exponential_backoff_edge_cases [] {
     assert ($safe_index == 4) "Safe index should be within bounds"
 }
 
-#[test]
+@test
 def test_enumerate_functionality_edge_cases [] {
     # Test enumerate with different data scenarios
     let empty_list = []
@@ -101,7 +101,7 @@ def test_enumerate_functionality_edge_cases [] {
     assert (($multi_enum | get 2 | get index) == 2) "Third index should be 2"
 }
 
-#[test]
+@test
 def test_dynamodb_conversion_patterns [] {
     # Test patterns for DynamoDB value conversion (without calling actual functions)
     
@@ -128,7 +128,7 @@ def test_dynamodb_conversion_patterns [] {
     }
 }
 
-#[test]
+@test
 def test_convert_from_dynamodb_value_edge_cases [] {
     # Test edge cases for converting from DynamoDB format
     
@@ -162,7 +162,7 @@ def test_convert_from_dynamodb_value_edge_cases [] {
     assert (($empty_ns_result | length) == 0) "Empty number set should convert to empty list"
 }
 
-#[test]
+@test
 def test_get_key_attributes_edge_cases [] {
     # Test edge cases for key attribute extraction
     
@@ -196,7 +196,7 @@ def test_get_key_attributes_edge_cases [] {
     assert ("extra_field" not-in ($result | columns)) "Should not include non-key attributes"
 }
 
-#[test]
+@test
 def test_temp_file_path_patterns [] {
     # Test temporary file path construction patterns
     let random_suffix = "abc123def"
@@ -228,7 +228,7 @@ def test_temp_file_path_patterns [] {
     assert ($success_result.success == true) "Success result should indicate success"
 }
 
-#[test]
+@test
 def test_chunks_functionality_edge_cases [] {
     # Test chunks with various scenarios
     
@@ -262,7 +262,7 @@ def test_chunks_functionality_edge_cases [] {
     assert (($remainder_chunks | last | length) == 3) "Last chunk should have 3 items"
 }
 
-#[test]
+@test
 def test_error_propagation_patterns [] {
     # Test that errors are properly propagated through the functional chains
     
@@ -282,7 +282,7 @@ def test_error_propagation_patterns [] {
     }
 }
 
-#[test]
+@test
 def test_type_safety_edge_cases [] {
     # Test type safety in various edge scenarios
     
@@ -313,7 +313,7 @@ def test_type_safety_edge_cases [] {
     assert (($map_content.null_field | get "NULL") == true) "Null field should be correct"
 }
 
-#[test]
+@test
 def test_reduce_accumulator_patterns [] {
     # Test reduce patterns used throughout the codebase
     
@@ -342,7 +342,7 @@ def test_reduce_accumulator_patterns [] {
     assert (($empty_result | columns | length) == 0) "Empty reduce should produce empty record"
 }
 
-#[test]
+@test
 def test_conditional_logic_branches [] {
     # Test all conditional branches in the codebase
     
@@ -366,7 +366,7 @@ def test_conditional_logic_branches [] {
     assert ($non_coalesced == "actual") "Non-null should not coalesce"
 }
 
-#[test]
+@test
 def test_string_operations_edge_cases [] {
     # Test string operations used throughout the codebase
     
@@ -403,7 +403,7 @@ def test_string_operations_edge_cases [] {
     }
 }
 
-#[test]
+@test
 def test_column_operations_edge_cases [] {
     # Test column operations used for key checking
     
@@ -427,7 +427,7 @@ def test_column_operations_edge_cases [] {
     assert ("inner" not-in ($nested_record | columns)) "Inner field should not be in top-level columns"
 }
 
-#[test]
+@test
 def test_list_operations_comprehensive [] {
     # Test all list operations used in the codebase
     

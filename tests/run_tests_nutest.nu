@@ -9,16 +9,20 @@ print ""
 
 let start_time = (date now)
 
-# Check if nutest module is available in parent directory
-if not ("../nutest" | path exists) {
-    print "❌ Error: nutest module is not available"
+# Check if nutest module is available - use absolute path from current directory
+let current_dir = (pwd)
+let project_root = ($current_dir | path dirname)
+let nutest_path = ($project_root | path join "nutest" "nutest")
+if not ($nutest_path | path exists) {
+    print $"❌ Error: nutest module is not available at ($nutest_path)"
+    print $"Current dir: ($current_dir)"  
+    print $"Project root: ($project_root)"
     print "Please install nutest first:"
     print "  git clone https://github.com/vyadh/nutest"
-    print "  cp -r nutest/nutest ."
     exit 1
 }
 
-use ../nutest
+use ../nutest/nutest
 
 # Run all unit tests
 print "🧪 Running unit tests..."

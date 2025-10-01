@@ -5,7 +5,7 @@
 
 use ../helpers/test_utils.nu *
 
-#[test]
+@test
 def test_complete_command_structure [] {
     # Test that complete command returns expected structure
     
@@ -26,7 +26,7 @@ def test_complete_command_structure [] {
     assert ($mock_complete_result.stderr == "test error") "Stderr should be accessible"
 }
 
-#[test]
+@test
 def test_aws_error_patterns_comprehensive [] {
     # Test all AWS error patterns that should be handled
     
@@ -98,7 +98,7 @@ def test_aws_error_patterns_comprehensive [] {
     }
 }
 
-#[test]
+@test
 def test_complete_result_exit_code_handling [] {
     # Test different exit code scenarios
     
@@ -133,7 +133,7 @@ def test_complete_result_exit_code_handling [] {
     assert ($throttle_result.stderr | str contains "ThrottlingException") "Throttle should be identifiable"
 }
 
-#[test]
+@test
 def test_json_parsing_from_stdout [] {
     # Test JSON parsing from stdout in different scenarios
     
@@ -172,7 +172,7 @@ def test_json_parsing_from_stdout [] {
     assert $empty_parsed "Empty stdout should throw error when parsing as JSON"
 }
 
-#[test]
+@test
 def test_stderr_error_extraction [] {
     # Test extracting error information from stderr
     
@@ -196,7 +196,7 @@ Additional context information may be available
     assert ($multiline_stderr | str contains "400KB limit") "Should preserve full error message"
 }
 
-#[test]
+@test
 def test_aws_cli_command_construction [] {
     # Test AWS CLI command parameter handling
     
@@ -221,7 +221,7 @@ def test_aws_cli_command_construction [] {
     assert ($file_param | str contains $temp_file) "File parameter should contain file path"
 }
 
-#[test]
+@test
 def test_region_and_table_validation [] {
     # Test parameter validation logic
     
@@ -245,7 +245,7 @@ def test_region_and_table_validation [] {
     }
 }
 
-#[test]
+@test
 def test_complete_with_different_commands [] {
     # Test complete command with different AWS CLI commands
     
@@ -289,7 +289,7 @@ def test_complete_with_different_commands [] {
     }
 }
 
-#[test]
+@test
 def test_error_handling_consistency [] {
     # Test that error handling is consistent across all AWS operations
     
@@ -312,7 +312,7 @@ def test_error_handling_consistency [] {
     }
 }
 
-#[test]
+@test
 def test_temp_file_path_construction [] {
     # Test temporary file path construction patterns
     
@@ -331,7 +331,7 @@ def test_temp_file_path_construction [] {
     }
 }
 
-#[test]
+@test
 def test_aws_response_structure_validation [] {
     # Test AWS response structure validation
     

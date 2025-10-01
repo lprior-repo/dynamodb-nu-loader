@@ -1,9 +1,9 @@
 # Unit tests for data operations in DynamoDB Nu-Loader
-
+use std/testing *
 use ../helpers/test_utils.nu *
 
 # Test the detect_and_process function
-#[test]
+@test
 def "test detect_and_process with JSON file" [] {
   let test_data = [
     { id: "1", name: "Alice" },
@@ -24,7 +24,7 @@ def "test detect_and_process with JSON file" [] {
   cleanup_temp_files [$temp_file]
 }
 
-#[test]  
+@test  
 def "test detect_and_process with CSV file" [] {
   let csv_content = "id,name\n1,Alice\n2,Bob"
   let temp_file = create_temp_test_file $csv_content ".csv"
@@ -37,7 +37,7 @@ def "test detect_and_process with CSV file" [] {
   cleanup_temp_files [$temp_file]
 }
 
-#[test]
+@test
 def "test detect_and_process with snapshot JSON format" [] {
   let snapshot_data = {
     metadata: { table_name: "test", item_count: 1 },
@@ -59,7 +59,7 @@ def "test detect_and_process with snapshot JSON format" [] {
 }
 
 # Test data type conversion for DynamoDB format
-#[test]
+@test
 def "test dynamodb type conversion" [] {
   let test_item = {
     string_field: "hello",
@@ -89,7 +89,7 @@ def "test dynamodb type conversion" [] {
 }
 
 # Test batch processing logic
-#[test]
+@test
 def "test batch chunking" [] {
   let items = generate_test_users 100
   let batches = ($items | chunks 25)
@@ -99,7 +99,7 @@ def "test batch chunking" [] {
   assert_equal ($batches | last | length) 25 "Last batch should have 25 items"
 }
 
-#[test]
+@test
 def "test batch chunking with remainder" [] {
   let items = generate_test_users 26
   let batches = ($items | chunks 25)
@@ -110,7 +110,7 @@ def "test batch chunking with remainder" [] {
 }
 
 # Test snapshot format creation
-#[test]
+@test
 def "test snapshot format creation" [] {
   let items = generate_test_users 3
   let table_name = "test-table"
@@ -135,7 +135,7 @@ def "test snapshot format creation" [] {
 }
 
 # Test configuration loading logic
-#[test]
+@test
 def "test default configuration structure" [] {
   let default_config = {
     dynamodb: { table_name: "test-table", region: "us-east-1" },
@@ -151,7 +151,7 @@ def "test default configuration structure" [] {
 }
 
 # Test error handling for invalid files
-#[test]
+@test
 def "test invalid file handling" [] {
   let nonexistent_file = "/tmp/nonexistent_file.json"
   
@@ -165,7 +165,7 @@ def "test invalid file handling" [] {
 }
 
 # Property-based test: Roundtrip consistency
-#[test]
+@test
 def "property roundtrip json serialization preserves data" [] {
   let original_data = generate_mixed_test_data 5 5
   let json_string = ($original_data | to json)
@@ -175,7 +175,7 @@ def "property roundtrip json serialization preserves data" [] {
   assert_equal ($original_data | first | get id) ($parsed_data | first | get id) "Should preserve field values"
 }
 
-#[test]
+@test
 def "property csv roundtrip preserves data structure" [] {
   let original_data = generate_test_users 3
   let csv_string = ($original_data | to csv)

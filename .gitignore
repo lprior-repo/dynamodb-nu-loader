@@ -88,4 +88,4 @@ cache/
 
 # Local runtime
 runtime/
-tmp/
+tmp/nutest/

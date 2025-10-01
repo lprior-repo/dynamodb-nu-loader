@@ -1,9 +1,9 @@
 # Unit tests for AWS operations in DynamoDB Nu-Loader
-
+use std/testing *
 use ../helpers/test_utils.nu *
 
 # Test DynamoDB item format conversion
-#[test]  
+@test  
 def "test dynamodb item conversion from record" [] {
   let input_item = {
     id: "user-1",
@@ -34,7 +34,7 @@ def "test dynamodb item conversion from record" [] {
   assert_equal $converted.score.N "95.5" "Should convert float to DynamoDB N type"
 }
 
-#[test]
+@test
 def "test dynamodb item conversion from raw response" [] {
   let dynamodb_item = {
     id: { "S": "user-1" },
@@ -58,7 +58,7 @@ def "test dynamodb item conversion from raw response" [] {
 }
 
 # Test batch request structure
-#[test]
+@test
 def "test batch write request structure" [] {
   let items = generate_test_users 2
   let table_name = "test-table"
@@ -90,7 +90,7 @@ def "test batch write request structure" [] {
   assert_contains ($batch_request.RequestItems | get $table_name | first | columns) "PutRequest" "Should have PutRequest structure"
 }
 
-#[test]
+@test
 def "test batch delete request structure" [] {
   let items = [
     { id: "user-1", sort_key: "USER" },
@@ -124,7 +124,7 @@ def "test batch delete request structure" [] {
 }
 
 # Test table info response parsing
-#[test]
+@test
 def "test table info parsing" [] {
   let mock_response = {
     "Table": {
@@ -153,7 +153,7 @@ def "test table info parsing" [] {
 }
 
 # Test empty table handling
-#[test]
+@test
 def "test empty table scan result" [] {
   let empty_scan_response = { "Items": [] }
   let items = $empty_scan_response.Items
@@ -162,7 +162,7 @@ def "test empty table scan result" [] {
   assert_type $items "list" "Should return a list even when empty"
 }
 
-#[test]
+@test
 def "test empty batch operations" [] {
   let empty_items = []
   
@@ -172,7 +172,7 @@ def "test empty batch operations" [] {
 }
 
 # Test chunking for batch operations
-#[test]
+@test
 def "test batch chunking respects DynamoDB limits" [] {
   let large_dataset = generate_test_users 100
   let batches = ($large_dataset | chunks 25)
@@ -191,14 +191,14 @@ def "test batch chunking respects DynamoDB limits" [] {
 }
 
 # Test error scenarios
-#[test]
+@test
 def "test invalid table name handling" [] {
   let invalid_table_name = ""
   
   assert_equal ($invalid_table_name | str length) 0 "Should detect empty table name"
 }
 
-#[test]
+@test
 def "test malformed dynamodb response handling" [] {
   let malformed_response = { "WrongField": [] }
   
@@ -208,7 +208,7 @@ def "test malformed dynamodb response handling" [] {
 }
 
 # Property-based tests
-#[test]
+@test
 def "property batch operations preserve all items" [] {
   let original_data = generate_mixed_test_data 50 25
   let batches = ($original_data | chunks 25)
@@ -218,7 +218,7 @@ def "property batch operations preserve all items" [] {
   assert_equal ($original_data | first | get id) ($reconstructed | first | get id) "Batching should preserve item order and content"
 }
 
-#[test]
+@test
 def "property dynamodb conversion is reversible for basic types" [] {
   let original_item = {
     string_val: "test",

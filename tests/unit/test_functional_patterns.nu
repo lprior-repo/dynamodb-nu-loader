@@ -5,7 +5,7 @@
 
 use ../helpers/test_utils.nu *
 
-#[test]
+@test
 def test_recursive_scan_termination [] {
     # Test that recursive scanning terminates correctly
     
@@ -37,7 +37,7 @@ def test_recursive_scan_termination [] {
     assert ($final_accumulator.page_count == 1) "Final accumulator should have correct page count"
 }
 
-#[test]
+@test
 def test_recursive_scan_continuation [] {
     # Test that recursive scanning continues correctly with pagination
     
@@ -72,7 +72,7 @@ def test_recursive_scan_continuation [] {
     assert ("id" in ($next_exclusive_start_key | columns)) "Next key should have id field"
 }
 
-#[test]
+@test
 def test_recursive_batch_write_base_cases [] {
     # Test base cases for recursive batch write
     
@@ -92,7 +92,7 @@ def test_recursive_batch_write_base_cases [] {
     assert ($retry_count <= $max_retries) "Retry count should be within limits"
 }
 
-#[test]
+@test
 def test_recursive_batch_write_retry_progression [] {
     # Test retry count progression in recursive calls
     
@@ -122,7 +122,7 @@ def test_recursive_batch_write_retry_progression [] {
     }
 }
 
-#[test]
+@test
 def test_functional_enumerate_replacement [] {
     # Test that enumerate correctly replaces mutable counter patterns
     
@@ -155,7 +155,7 @@ def test_functional_enumerate_replacement [] {
     assert (($enumerated_batches | get 2 | get index) == 2) "Third index should be 2"
 }
 
-#[test]
+@test
 def test_functional_pipeline_composition [] {
     # Test complex functional pipeline compositions used in the codebase
     
@@ -188,7 +188,7 @@ def test_functional_pipeline_composition [] {
     assert ($transformed_data.CHARLIE == "mature") "Charlie should be in mature group"
 }
 
-#[test]
+@test
 def test_immutable_data_patterns [] {
     # Test immutable data update patterns
     
@@ -217,7 +217,7 @@ def test_immutable_data_patterns [] {
     assert (($extended_list | length) == 5) "Extended list should have new items"
 }
 
-#[test]
+@test
 def test_recursive_error_propagation [] {
     # Test that errors propagate correctly through recursive calls
     
@@ -250,7 +250,7 @@ def test_recursive_error_propagation [] {
     }
 }
 
-#[test]
+@test
 def test_tail_recursion_pattern [] {
     # Test tail recursion patterns for stack safety
     
@@ -284,7 +284,7 @@ def test_tail_recursion_pattern [] {
     assert ($modified_params.max_retries == $test_params.max_retries) "Max retries should stay same"
 }
 
-#[test]
+@test
 def test_higher_order_function_usage [] {
     # Test higher-order function patterns used in the codebase
     
@@ -315,7 +315,7 @@ def test_higher_order_function_usage [] {
     assert ($name_types.Bob == "user") "Bob should be user type"
 }
 
-#[test]
+@test
 def test_closure_capture_patterns [] {
     # Test closure patterns and variable capture
     
@@ -345,7 +345,7 @@ def test_closure_capture_patterns [] {
     assert (($filtered | length) == 2) "Should filter correctly with closure"
 }
 
-#[test]
+@test
 def test_functional_error_handling [] {
     # Test functional error handling patterns
     
@@ -387,7 +387,7 @@ def test_functional_error_handling [] {
     }
 }
 
-#[test]
+@test
 def test_pure_function_properties [] {
     # Test that functions maintain pure function properties
     

@@ -3,7 +3,7 @@
 use ../helpers/test_utils.nu *
 
 # Test environment variable and CLI flag handling
-#[test]
+@test
 def "test environment variable validation" [] {
   # Test environment variable access patterns
   let test_table = $env.TABLE_NAME? | default null
@@ -16,7 +16,7 @@ def "test environment variable validation" [] {
   assert_type ($test_snapshots_dir == null or ($test_snapshots_dir | describe) == "string") "bool" "SNAPSHOTS_DIR should be string or null"
 }
 
-#[test]  
+@test  
 def "test parameter validation logic" [] {
   # Test the validation logic pattern used in CLI commands
   let table_flag = null
@@ -36,7 +36,7 @@ def "test parameter validation logic" [] {
 }
 
 # Test snapshot file naming logic
-#[test]
+@test
 def "test snapshot filename generation" [] {
   let snapshots_dir = "./snapshots"
   let timestamp = "20240101_120000"
@@ -47,7 +47,7 @@ def "test snapshot filename generation" [] {
   assert ($expected_filename | str ends-with ".json") "Filename should end with .json"
 }
 
-#[test]
+@test
 def "test custom snapshot filename handling" [] {
   let custom_file = "my_custom_snapshot.json"
   
@@ -59,7 +59,7 @@ def "test custom snapshot filename handling" [] {
 }
 
 # Test file format detection
-#[test]
+@test
 def "test file format detection logic" [] {
   let json_file = "test.json"
   let csv_file = "test.csv"
@@ -71,7 +71,7 @@ def "test file format detection logic" [] {
 }
 
 # Test CLI argument validation
-#[test]
+@test
 def "test snapshot command argument handling" [] {
   # Test with no file argument (should generate default name)
   let file_arg = null
@@ -84,14 +84,14 @@ def "test snapshot command argument handling" [] {
   assert_equal $should_use_provided true "Should use provided filename"
 }
 
-#[test]
+@test
 def "test restore command argument validation" [] {
   # Restore command requires a file argument
   let file_required = true  # Simulating required parameter
   assert_equal $file_required true "Restore command should require file argument"
 }
 
-#[test]
+@test
 def "test wipe command force flag handling" [] {
   let force_flag = true
   let no_force = false
@@ -106,7 +106,7 @@ def "test wipe command force flag handling" [] {
 }
 
 # Test seed data structure
-#[test]
+@test
 def "test default seed data structure" [] {
   let seed_data = [
     { id: "user-1", sort_key: "USER", name: "Alice Johnson", email: "alice@example.com", age: 30, gsi1_pk: "ACTIVE_USER", gsi1_sk: "2024-01-15" },
@@ -135,7 +135,7 @@ def "test default seed data structure" [] {
 }
 
 # Test directory creation logic
-#[test]
+@test
 def "test snapshots directory creation logic" [] {
   let snapshots_dir = "/tmp/test_snapshots"
   
@@ -148,7 +148,7 @@ def "test snapshots directory creation logic" [] {
 }
 
 # Test status command output structure
-#[test]
+@test
 def "test status command output format" [] {
   let mock_table_info = {
     table_name: "test-table",
@@ -167,7 +167,7 @@ def "test status command output format" [] {
 }
 
 # Test error handling scenarios
-#[test]
+@test
 def "test file not found error handling" [] {
   let nonexistent_file = "/tmp/does_not_exist.json"
   let file_exists = ($nonexistent_file | path exists)
@@ -179,7 +179,7 @@ def "test file not found error handling" [] {
   assert_equal $error_should_be_created true "Should create error for missing file"
 }
 
-#[test]
+@test
 def "test invalid file extension handling" [] {
   let unknown_file = "test.xyz"
   let is_csv = ($unknown_file | str ends-with ".csv")
@@ -189,7 +189,7 @@ def "test invalid file extension handling" [] {
 }
 
 # Test help/usage functionality
-#[test]
+@test
 def "test main command help structure" [] {
   let help_commands = [
     "snapshot [file]",
@@ -208,7 +208,7 @@ def "test main command help structure" [] {
 }
 
 # Test error message generation for missing parameters
-#[test]
+@test
 def "test missing parameter error messages" [] {
   let table_name = null
   let aws_region = null
@@ -227,7 +227,7 @@ def "test missing parameter error messages" [] {
   assert ($expected_region_msg | str contains "AWS_REGION") "Error message should mention environment variable"
 }
 
-#[test]
+@test
 def "property file operations should preserve data integrity" [] {
   let test_data = generate_test_users 5
   

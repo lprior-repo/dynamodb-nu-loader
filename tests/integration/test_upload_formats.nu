@@ -20,7 +20,7 @@ def cleanup_upload_test [context: record]: nothing -> nothing {
 }
 
 # Test JSON upload scenarios
-#[test]
+@test
 def "upload test json raw array format" [] {
   let context = setup_upload_test
   mkdir $context.temp_dir
@@ -55,7 +55,7 @@ def "upload test json raw array format" [] {
   cleanup_upload_test $context
 }
 
-#[test]
+@test
 def "upload test json snapshot format" [] {
   let context = setup_upload_test
   mkdir $context.temp_dir
@@ -107,7 +107,7 @@ def "upload test json snapshot format" [] {
 }
 
 # Test CSV upload scenarios
-#[test]
+@test
 def "upload test csv format with all data types" [] {
   let context = setup_upload_test
   mkdir $context.temp_dir
@@ -138,7 +138,7 @@ def "upload test csv format with all data types" [] {
   cleanup_upload_test $context
 }
 
-#[test]
+@test
 def "upload test csv format with special characters" [] {
   let context = setup_upload_test
   mkdir $context.temp_dir
@@ -174,7 +174,7 @@ def "upload test csv format with special characters" [] {
   cleanup_upload_test $context
 }
 
-#[test]
+@test
 def "upload test csv format empty and null handling" [] {
   let context = setup_upload_test
   mkdir $context.temp_dir
@@ -211,7 +211,7 @@ def "upload test csv format empty and null handling" [] {
 }
 
 # Test format detection and processing
-#[test]
+@test
 def "upload test format auto detection" [] {
   let context = setup_upload_test
   mkdir $context.temp_dir
@@ -247,7 +247,7 @@ def "upload test format auto detection" [] {
 }
 
 # Test large dataset uploads
-#[test]
+@test
 def "upload test large dataset performance" [] {
   let context = setup_upload_test
   mkdir $context.temp_dir
@@ -281,7 +281,7 @@ def "upload test large dataset performance" [] {
 }
 
 # Test error scenarios in uploads
-#[test]
+@test
 def "upload test malformed json handling" [] {
   let context = setup_upload_test
   mkdir $context.temp_dir
@@ -298,7 +298,7 @@ def "upload test malformed json handling" [] {
   cleanup_upload_test $context
 }
 
-#[test]
+@test
 def "upload test missing file handling" [] {
   let nonexistent_file = "/tmp/does_not_exist.json"
   
@@ -311,7 +311,7 @@ def "upload test missing file handling" [] {
 }
 
 # Test data integrity during upload
-#[test]
+@test
 def "upload test data integrity preservation" [] {
   let context = setup_upload_test
   mkdir $context.temp_dir
@@ -352,7 +352,7 @@ def "upload test data integrity preservation" [] {
 }
 
 # Property-based test for upload consistency
-#[test]
+@test
 def "property upload formats preserve essential structure" [] {
   let context = setup_upload_test
   mkdir $context.temp_dir

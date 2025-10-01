@@ -2,16 +2,16 @@
 
 # Test suite for critical bug fixes
 # Tests dynamic key schema discovery, improved data type mapping, and error handling
-
+use std/testing *
 use ../helpers/test_utils.nu *
 
-#[test]
+@test
 def test_convert_to_dynamodb_value_handles_null [] {
     let result = convert_to_dynamodb_value null
     assert_eq $result {"NULL": true} "Null values should convert to DynamoDB NULL type"
 }
 
-#[test]
+@test
 def test_convert_to_dynamodb_value_handles_nested_records [] {
     let test_record = {
         name: "John",
@@ -25,7 +25,7 @@ def test_convert_to_dynamodb_value_handles_nested_records [] {
     assert (($result | get "M" | get "active" | get "BOOL") == true) "Nested record active should be boolean"
 }
 
-#[test]
+@test
 def test_convert_to_dynamodb_value_handles_homogeneous_string_list [] {
     let test_list = ["apple", "banana", "cherry"]
     let result = convert_to_dynamodb_value $test_list
@@ -33,7 +33,7 @@ def test_convert_to_dynamodb_value_handles_homogeneous_string_list [] {
     assert (($result | get "SS") == $test_list) "Homogeneous string list should use SS (String Set)"
 }
 
-#[test]
+@test
 def test_convert_to_dynamodb_value_handles_homogeneous_number_list [] {
     let test_list = [1, 2, 3]
     let result = convert_to_dynamodb_value $test_list
@@ -41,7 +41,7 @@ def test_convert_to_dynamodb_value_handles_homogeneous_number_list [] {
     assert (($result | get "NS") == ["1", "2", "3"]) "Homogeneous number list should use NS (Number Set)"
 }
 
-#[test]
+@test
 def test_convert_to_dynamodb_value_handles_mixed_type_list [] {
     let test_list = ["apple", 42, true]
     let result = convert_to_dynamodb_value $test_list
@@ -53,14 +53,14 @@ def test_convert_to_dynamodb_value_handles_mixed_type_list [] {
     assert (($list_items | get 2 | get "BOOL") == true) "Third item should be boolean"
 }
 
-#[test]
+@test
 def test_convert_to_dynamodb_value_handles_empty_list [] {
     let result = convert_to_dynamodb_value []
     
     assert (($result | get "L") == []) "Empty list should use L (List) format with empty array"
 }
 
-#[test]
+@test
 def test_convert_from_dynamodb_value_handles_null [] {
     let dynamodb_value = {"NULL": true}
     let result = convert_from_dynamodb_value $dynamodb_value
@@ -68,7 +68,7 @@ def test_convert_from_dynamodb_value_handles_null [] {
     assert ($result == null) "DynamoDB NULL should convert to null"
 }
 
-#[test]
+@test
 def test_convert_from_dynamodb_value_handles_string_set [] {
     let dynamodb_value = {"SS": ["apple", "banana", "cherry"]}
     let result = convert_from_dynamodb_value $dynamodb_value
@@ -76,7 +76,7 @@ def test_convert_from_dynamodb_value_handles_string_set [] {
     assert ($result == ["apple", "banana", "cherry"]) "DynamoDB SS should convert to string list"
 }
 
-#[test]
+@test
 def test_convert_from_dynamodb_value_handles_number_set [] {
     let dynamodb_value = {"NS": ["1", "2", "3"]}
     let result = convert_from_dynamodb_value $dynamodb_value
@@ -84,7 +84,7 @@ def test_convert_from_dynamodb_value_handles_number_set [] {
     assert ($result == [1, 2, 3]) "DynamoDB NS should convert to number list"
 }
 
-#[test]
+@test
 def test_convert_from_dynamodb_value_handles_number_conversion [] {
     # Test integer
     let int_value = {"N": "42"}
@@ -97,7 +97,7 @@ def test_convert_from_dynamodb_value_handles_number_conversion [] {
     assert ($float_result == 42.5) "DynamoDB N should convert to float when needed"
 }
 
-#[test]
+@test
 def test_convert_from_dynamodb_value_handles_nested_map [] {
     let dynamodb_value = {
         "M": {
@@ -113,7 +113,7 @@ def test_convert_from_dynamodb_value_handles_nested_map [] {
     assert ($result.active == true) "Nested map active should be boolean"
 }
 
-#[test]
+@test
 def test_convert_from_dynamodb_value_handles_list [] {
     let dynamodb_value = {
         "L": [
@@ -130,7 +130,7 @@ def test_convert_from_dynamodb_value_handles_list [] {
     assert (($result | get 2) == true) "Third item should be boolean"
 }
 
-#[test]
+@test
 def test_get_key_attributes_for_item_with_string_keys [] {
     let item = {
         user_id: "user123",
@@ -155,7 +155,7 @@ def test_get_key_attributes_for_item_with_string_keys [] {
     assert (($result | columns | length) == 2) "Only key attributes should be included"
 }
 
-#[test]
+@test
 def test_get_key_attributes_for_item_with_number_keys [] {
     let item = {
         pk: 123,
@@ -180,7 +180,7 @@ def test_get_key_attributes_for_item_with_number_keys [] {
     assert (($result | columns | length) == 2) "Only key attributes should be included"
 }
 
-#[test]
+@test
 def test_get_key_attributes_for_item_with_single_key [] {
     let item = {
         id: "item123",

@@ -1,5 +1,5 @@
 # Integration tests for complete workflows in DynamoDB Nu-Loader
-
+use std/testing *
 use ../helpers/test_utils.nu *
 
 # Setup and teardown helpers for integration tests
@@ -20,7 +20,7 @@ def cleanup_integration_test [context: record]: nothing -> nothing {
 }
 
 # Test complete snapshot workflow
-#[test]
+@test
 def "integration test snapshot creation and file output" [] {
   let context = setup_integration_test
   
@@ -58,7 +58,7 @@ def "integration test snapshot creation and file output" [] {
   cleanup_integration_test $context
 }
 
-#[test]
+@test
 def "integration test csv snapshot creation" [] {
   let context = setup_integration_test
   mkdir $context.snapshots_dir
@@ -79,7 +79,7 @@ def "integration test csv snapshot creation" [] {
 }
 
 # Test complete restore workflow  
-#[test]
+@test
 def "integration test restore from json snapshot" [] {
   let context = setup_integration_test
   mkdir $context.snapshots_dir
@@ -116,7 +116,7 @@ def "integration test restore from json snapshot" [] {
   cleanup_integration_test $context
 }
 
-#[test]
+@test
 def "integration test restore from csv file" [] {
   let context = setup_integration_test
   mkdir $context.snapshots_dir
@@ -137,7 +137,7 @@ def "integration test restore from csv file" [] {
 }
 
 # Test complete wipe functionality
-#[test]
+@test
 def "integration test wipe operation simulation" [] {
   let context = setup_integration_test
   let test_items = $context.test_data
@@ -169,7 +169,7 @@ def "integration test wipe operation simulation" [] {
 }
 
 # Test seed operation
-#[test]
+@test
 def "integration test seed data loading" [] {
   let context = setup_integration_test
   
@@ -197,7 +197,7 @@ def "integration test seed data loading" [] {
 }
 
 # Test status operation
-#[test]
+@test
 def "integration test status information gathering" [] {
   let context = setup_integration_test
   
@@ -229,7 +229,7 @@ def "integration test status information gathering" [] {
 }
 
 # Test end-to-end workflow: seed → snapshot → wipe → restore
-#[test]
+@test
 def "integration test complete workflow simulation" [] {
   let context = setup_integration_test
   mkdir $context.snapshots_dir
@@ -270,7 +270,7 @@ def "integration test complete workflow simulation" [] {
 }
 
 # Test error handling in workflows
-#[test]
+@test
 def "integration test file not found error handling" [] {
   let nonexistent_file = "/tmp/does_not_exist.json"
   
@@ -282,7 +282,7 @@ def "integration test file not found error handling" [] {
   } "Should handle missing file gracefully"
 }
 
-#[test]
+@test
 def "integration test malformed json handling" [] {
   let context = setup_integration_test
   mkdir $context.snapshots_dir
@@ -298,7 +298,7 @@ def "integration test malformed json handling" [] {
 }
 
 # Performance test with larger datasets
-#[test]
+@test
 def "integration test large dataset handling" [] {
   let context = setup_integration_test
   

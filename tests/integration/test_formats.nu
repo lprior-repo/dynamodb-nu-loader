@@ -3,7 +3,7 @@
 use ../helpers/test_utils.nu *
 
 # Test JSON format handling
-#[test]
+@test
 def "integration test json format roundtrip" [] {
   let test_data = generate_mixed_test_data 3 2
   let temp_dir = "/tmp/format_test_json"
@@ -39,7 +39,7 @@ def "integration test json format roundtrip" [] {
   rm -rf $temp_dir
 }
 
-#[test]
+@test
 def "integration test csv format roundtrip" [] {
   let test_data = generate_test_users 3  # Use consistent data structure for CSV
   let temp_dir = "/tmp/format_test_csv"
@@ -60,7 +60,7 @@ def "integration test csv format roundtrip" [] {
 }
 
 # Test format auto-detection
-#[test]
+@test
 def "integration test format detection by extension" [] {
   let test_data = generate_test_users 2
   let temp_dir = "/tmp/format_detection_test"
@@ -100,7 +100,7 @@ def "integration test format detection by extension" [] {
 }
 
 # Test snapshot format with different data types
-#[test]
+@test
 def "integration test snapshot format with mixed data types" [] {
   let mixed_data = [
     {
@@ -156,7 +156,7 @@ def "integration test snapshot format with mixed data types" [] {
 }
 
 # Test CSV handling with special characters
-#[test]
+@test
 def "integration test csv format with special characters" [] {
   let special_data = [
     {
@@ -195,7 +195,7 @@ def "integration test csv format with special characters" [] {
 }
 
 # Test large file handling
-#[test]
+@test
 def "integration test large file format handling" [] {
   let large_data = generate_mixed_test_data 50 25  # 75 items
   let temp_dir = "/tmp/large_file_test"
@@ -236,7 +236,7 @@ def "integration test large file format handling" [] {
 }
 
 # Test empty data handling
-#[test]
+@test
 def "integration test empty data format handling" [] {
   let empty_data = []
   let temp_dir = "/tmp/empty_data_test"
@@ -272,7 +272,7 @@ def "integration test empty data format handling" [] {
 }
 
 # Test file encoding and character sets
-#[test]
+@test
 def "integration test unicode character handling" [] {
   let unicode_data = [
     {
@@ -304,7 +304,7 @@ def "integration test unicode character handling" [] {
 }
 
 # Test format compatibility with existing fixtures
-#[test]
+@test
 def "integration test format compatibility with fixtures" [] {
   # Test with existing fixture files
   let fixture_json = "tests/fixtures/sample_users.json"
@@ -332,7 +332,7 @@ def "integration test format compatibility with fixtures" [] {
 }
 
 # Property-based test for format consistency
-#[test] 
+@test 
 def "property format conversion preserves essential data structure" [] {
   let test_data = generate_test_users 5
   let temp_dir = "/tmp/property_format_test"

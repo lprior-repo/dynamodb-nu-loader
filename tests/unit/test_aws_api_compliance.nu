@@ -5,7 +5,7 @@
 
 use ../helpers/test_utils.nu *
 
-#[test]
+@test
 def test_scan_table_page_structure [] {
     # Test that scan_table_page returns correct structure
     # Note: This is a mock test since we can't run actual AWS commands in tests
@@ -24,7 +24,7 @@ def test_scan_table_page_structure [] {
     assert ("count" in ($mock_scan_result | columns)) "Should have count field"
 }
 
-#[test]
+@test
 def test_batch_write_request_structure [] {
     # Test the structure of batch write requests
     let test_items = [
@@ -47,7 +47,7 @@ def test_batch_write_request_structure [] {
     assert ("Item" in ($dynamodb_items | first | get PutRequest | columns)) "Should have Item in PutRequest"
 }
 
-#[test]
+@test
 def test_delete_request_structure [] {
     # Test the structure of delete requests
     let test_item = {user_id: "user123", timestamp: "2024-01-01"}
@@ -73,7 +73,7 @@ def test_delete_request_structure [] {
     assert ("timestamp" in ($key_object | columns)) "Key should contain timestamp"
 }
 
-#[test]
+@test
 def test_exponential_backoff_calculation [] {
     # Test exponential backoff wait times
     let wait_times = [1, 2, 4, 8, 16]
@@ -85,7 +85,7 @@ def test_exponential_backoff_calculation [] {
     assert (($wait_times | get 4) == 16) "Fifth retry should wait 16 seconds"
 }
 
-#[test]
+@test
 def test_chunking_logic_for_batch_operations [] {
     # Test that items are properly chunked into batches of 25
     let large_dataset = (0..100 | each { |i| {id: $"item($i)", value: $i} })
@@ -96,7 +96,7 @@ def test_chunking_logic_for_batch_operations [] {
     assert (($batches | last | length) == 1) "Last batch should have 1 item"
 }
 
-#[test]
+@test
 def test_unprocessed_items_structure [] {
     # Test structure for handling unprocessed items from AWS response
     let mock_unprocessed_response = {
@@ -122,7 +122,7 @@ def test_unprocessed_items_structure [] {
     assert (($unprocessed | get $table_name | length) == 1) "Should have 1 unprocessed item"
 }
 
-#[test]
+@test
 def test_last_evaluated_key_structure [] {
     # Test LastEvaluatedKey structure for pagination
     let mock_last_evaluated_key = {
@@ -135,7 +135,7 @@ def test_last_evaluated_key_structure [] {
     assert (($mock_last_evaluated_key | get user_id | get S) == "user123") "Should have correct user_id value"
 }
 
-#[test]
+@test
 def test_describe_table_response_structure [] {
     # Test expected structure from DescribeTable response
     let mock_describe_response = {
@@ -163,7 +163,7 @@ def test_describe_table_response_structure [] {
     assert ($table.TableStatus == "ACTIVE") "Should have ACTIVE status"
 }
 
-#[test]
+@test
 def test_scan_response_structure [] {
     # Test expected structure from Scan response
     let mock_scan_response = {
@@ -186,7 +186,7 @@ def test_scan_response_structure [] {
     assert ("LastEvaluatedKey" in ($mock_scan_response | columns)) "Should have LastEvaluatedKey field"
 }
 
-#[test]
+@test
 def test_batch_write_response_structure [] {
     # Test expected structure from BatchWriteItem response
     let mock_batch_response = {
@@ -204,7 +204,7 @@ def test_batch_write_response_structure [] {
     assert (($mock_batch_response.ConsumedCapacity | length) == 1) "Should have 1 consumed capacity entry"
 }
 
-#[test]
+@test
 def test_error_message_patterns [] {
     # Test error message pattern matching
     let error_patterns = [
@@ -226,7 +226,7 @@ def test_error_message_patterns [] {
     }
 }
 
-#[test]
+@test
 def test_retryable_error_identification [] {
     # Test identification of retryable vs non-retryable errors
     let retryable_errors = [

@@ -3,7 +3,7 @@
 use ../helpers/test_utils.nu *
 
 # Test the detect_and_process function directly
-#[test]
+@test
 def "unit test detect_and_process with json raw array" [] {
   let test_data = [
     { id: "test-1", sort_key: "USER", name: "Test User 1" },
@@ -31,7 +31,7 @@ def "unit test detect_and_process with json raw array" [] {
   cleanup_temp_files [$temp_file]
 }
 
-#[test]
+@test
 def "unit test detect_and_process with json snapshot format" [] {
   let snapshot_data = {
     metadata: {
@@ -67,7 +67,7 @@ def "unit test detect_and_process with json snapshot format" [] {
   cleanup_temp_files [$temp_file]
 }
 
-#[test]
+@test
 def "unit test detect_and_process with csv format" [] {
   let csv_content = "id,sort_key,name\ncsv-1,USER,CSV User 1\ncsv-2,USER,CSV User 2"
   let temp_file = create_temp_test_file $csv_content ".csv"
@@ -87,7 +87,7 @@ def "unit test detect_and_process with csv format" [] {
 }
 
 # Test DynamoDB batch write item conversion
-#[test]
+@test
 def "unit test batch write item conversion for mixed types" [] {
   let mixed_items = [
     {
@@ -144,7 +144,7 @@ def "unit test batch write item conversion for mixed types" [] {
 }
 
 # Test CSV data type handling
-#[test]
+@test
 def "unit test csv data type preservation awareness" [] {
   let original_data = [
     {
@@ -175,7 +175,7 @@ def "unit test csv data type preservation awareness" [] {
 }
 
 # Test file extension detection logic
-#[test]
+@test
 def "unit test file extension detection" [] {
   let test_files = [
     "data.json",
@@ -211,7 +211,7 @@ def "unit test file extension detection" [] {
 }
 
 # Test load_and_restore function components
-#[test]
+@test
 def "unit test load_and_restore file validation" [] {
   let existing_file = create_temp_test_file "test data" ".json"
   let nonexistent_file = "/tmp/does_not_exist.json"
@@ -234,7 +234,7 @@ def "unit test load_and_restore file validation" [] {
 }
 
 # Test batch size validation
-#[test]
+@test
 def "unit test batch size compliance" [] {
   let large_dataset = generate_test_users 100
   let batches = ($large_dataset | chunks 25)
@@ -255,7 +255,7 @@ def "unit test batch size compliance" [] {
 }
 
 # Test upload data validation
-#[test]
+@test
 def "unit test upload data structure validation" [] {
   let valid_items = [
     { id: "valid-1", sort_key: "USER", name: "Valid User" },
@@ -281,7 +281,7 @@ def "unit test upload data structure validation" [] {
 }
 
 # Test empty dataset handling
-#[test]
+@test
 def "unit test empty dataset upload handling" [] {
   let empty_items = []
   
@@ -295,7 +295,7 @@ def "unit test empty dataset upload handling" [] {
 }
 
 # Property-based test for upload processing
-#[test]
+@test
 def "property upload processing preserves item count" [] {
   let test_sizes = [1, 5, 25, 26, 50, 100]
   
@@ -308,7 +308,7 @@ def "property upload processing preserves item count" [] {
   }
 }
 
-#[test]
+@test
 def "property upload type conversion is consistent" [] {
   let test_data = [
     { id: "prop-1", sort_key: "TEST", value: "string" },

@@ -882,13 +882,16 @@ def "main wipe" [
   }
   
   # Safety check - require user confirmation (industry standard for destructive operations)
-  print $"⚠️  This will PERMANENTLY DELETE all data from ($table_name)"
-  print $"Are you sure you want to continue? y/N: " --no-newline
-  # 'input' waits for user input from stdin
-  let confirm = (input)
-  if $confirm != "y" {
-    print "Operation cancelled"
-    return
+  # Skip confirmation if running in automated test mode
+  if ($env.SKIP_CONFIRMATION? | default "false") != "true" {
+    print $"⚠️  This will PERMANENTLY DELETE all data from ($table_name)"
+    print $"Are you sure you want to continue? y/N: " --no-newline
+    # 'input' waits for user input from stdin
+    let confirm = (input)
+    if $confirm != "y" {
+      print "Operation cancelled"
+      return
+    }
   }
   
   # ⚠️ DESTRUCTIVE OPERATION: This permanently deletes all table data
@@ -929,7 +932,7 @@ def "main seed" [
   let seed_count = ($seed_data | length)
   print $"Adding ($seed_count) items to ($table_name)..."
   batch_write $table_name $seed_data --region $aws_region
-  print $"✅ Seeded ($seed_count) items successfully (existing data preserved)"
+  print $"✅ Seeded ($seed_count) items successfully - existing data preserved"
 }
 
 # Complete database reset: wipe + seed in one operation (industry standard pattern)
@@ -956,12 +959,15 @@ def "main reset" [
     error make { msg: $"Seed file not found: ($seed_file). Create a JSON file with your seed data." }
   }
   
-  print $"🔄 RESET: This will wipe table ($table_name) and load fresh data from ($seed_file)"
-  print $"Are you sure you want to continue? y/N: " --no-newline
-  let confirm = (input)
-  if $confirm != "y" {
-    print "Operation cancelled"
-    return
+  # Safety check with test mode bypass
+  if ($env.SKIP_CONFIRMATION? | default "false") != "true" {
+    print $"🔄 RESET: This will wipe table ($table_name) and load fresh data from ($seed_file)"
+    print $"Are you sure you want to continue? y/N: " --no-newline
+    let confirm = (input)
+    if $confirm != "y" {
+      print "Operation cancelled"
+      return
+    }
   }
   
   print $"Resetting table ($table_name)..."

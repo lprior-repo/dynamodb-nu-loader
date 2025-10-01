@@ -4,7 +4,7 @@
 use ../helpers/test_utils.nu *
 
 # Test environment variable validation patterns
-#[test]
+@test
 def "test env var null handling" [] {
   # Test the exact pattern used in main.nu
   let table_flag = null
@@ -21,7 +21,7 @@ def "test env var null handling" [] {
   assert_type ($snapshots_dir == null or ($snapshots_dir | describe) == "string") "bool" "Snapshots dir should be null or string"
 }
 
-#[test]
+@test
 def "test flag override of env vars" [] {
   # Test flag priority over environment variables
   let table_flag = "flag-table"
@@ -39,7 +39,7 @@ def "test flag override of env vars" [] {
 }
 
 # Test error message generation for all validation scenarios
-#[test]
+@test
 def "test all validation error messages" [] {
   let table_error_msg = "Table name must be provided via --table flag or TABLE_NAME environment variable"
   let region_error_msg = "AWS region must be provided via --region flag or AWS_REGION environment variable"
@@ -55,7 +55,7 @@ def "test all validation error messages" [] {
 }
 
 # Test parameter validation logic for all commands
-#[test]
+@test
 def "test snapshot command validation paths" [] {
   # Test all possible parameter combinations for snapshot command
   
@@ -78,7 +78,7 @@ def "test snapshot command validation paths" [] {
   assert_type $should_error_snapshots "bool" "Should detect null snapshots parameter"
 }
 
-#[test]
+@test
 def "test restore command validation paths" [] {
   # Restore doesn't need snapshots dir, only table and region
   let table_null = null
@@ -94,7 +94,7 @@ def "test restore command validation paths" [] {
   assert_type $should_error_region "bool" "Restore should validate region parameter"
 }
 
-#[test]
+@test
 def "test wipe command validation paths" [] {
   # Wipe needs table and region, plus force flag handling
   let table_null = null
@@ -116,7 +116,7 @@ def "test wipe command validation paths" [] {
   assert_equal $should_require_confirmation true "No force flag should require confirmation"
 }
 
-#[test]
+@test
 def "test seed command validation paths" [] {
   # Seed needs table and region, plus optional file parameter
   let table_null = null
@@ -138,7 +138,7 @@ def "test seed command validation paths" [] {
   assert_equal $file_result_provided "custom-seed.json" "Should use provided file when specified"
 }
 
-#[test]
+@test
 def "test status command validation paths" [] {
   # Status needs table and region
   let table_null = null
@@ -155,7 +155,7 @@ def "test status command validation paths" [] {
 }
 
 # Test all file existence validation paths
-#[test]
+@test
 def "test file existence validation" [] {
   # Test restore file validation
   let existing_file = "existing.json" 
@@ -177,7 +177,7 @@ def "test file existence validation" [] {
 }
 
 # Test directory creation validation
-#[test]
+@test
 def "test directory creation validation" [] {
   let snapshots_dir = "/tmp/test_snapshots_validation"
   
@@ -196,7 +196,7 @@ def "test directory creation validation" [] {
 }
 
 # Test AWS operation validation patterns  
-#[test]
+@test
 def "test aws operations validation" [] {
   # All AWS operations need region validation
   let region_null = null
@@ -214,7 +214,7 @@ def "test aws operations validation" [] {
 }
 
 # Test edge cases and boundary conditions
-#[test]
+@test
 def "test empty string parameters" [] {
   # Test empty strings vs null
   let empty_table = ""
@@ -235,7 +235,7 @@ def "test empty string parameters" [] {
   assert_equal $region_is_empty true "Should detect empty region"
 }
 
-#[test]
+@test
 def "test parameter type consistency" [] {
   # All parameters should be strings when provided
   let table_string = "test-table"
@@ -257,7 +257,7 @@ def "test parameter type consistency" [] {
 }
 
 # Test confirmation prompt logic paths
-#[test]
+@test
 def "test wipe confirmation logic" [] {
   # Test all confirmation scenarios
   let force_flag_true = true
@@ -286,7 +286,7 @@ def "test wipe confirmation logic" [] {
 }
 
 # Test all possible error conditions
-#[test]
+@test
 def "test all error conditions" [] {
   # Test that we have proper error conditions for all scenarios
   let error_conditions = [
