@@ -59,7 +59,248 @@ def main []: nothing -> nothing {
   show_enhanced_help
 }
 
+# Enhanced Error Handling Functions
+def handle_aws_error [
+  error_output: string
+  operation: string
+]: nothing -> nothing {
+  # Parse common AWS error patterns from CLI output
+  if ($error_output | str contains "ResourceNotFoundException") {
+    error make { 
+      msg: $"Table not found during ($operation). Please verify the table name exists and is in the correct region."
+    }
+  } else if ($error_output | str contains "ProvisionedThroughputExceededException") {
+    error make { 
+      msg: $"Throughput exceeded during ($operation). The request rate is too high for the provisioned capacity. Consider using exponential backoff or increasing provisioned capacity."
+    }
+  } else if ($error_output | str contains "ThrottlingException") {
+    error make { 
+      msg: $"Request throttled during ($operation). DynamoDB is temporarily throttling requests. This is usually temporary - retry with exponential backoff."
+    }
+  } else if ($error_output | str contains "RequestLimitExceeded") {
+    error make { 
+      msg: $"Request limit exceeded during ($operation). Throughput exceeds current account quota. Contact AWS Support to request a quota increase."
+    }
+  } else if ($error_output | str contains "InternalServerError") {
+    error make { 
+      msg: $"AWS internal server error during ($operation). This is a temporary AWS-side issue. Retry the operation."
+    }
+  } else if ($error_output | str contains "ValidationException") {
+    error make { 
+      msg: $"Validation error during ($operation). Request parameters are invalid. Check table name, key attributes, and data types."
+    }
+  } else if ($error_output | str contains "ItemCollectionSizeLimitExceededException") {
+    error make { 
+      msg: $"Item collection size limit exceeded during ($operation). The total size of items with the same partition key exceeds 10 GB limit."
+    }
+  } else if ($error_output | str contains "ReplicatedWriteConflictException") {
+    error make { 
+      msg: $"Replicated write conflict during ($operation). Items are being modified by requests in another region. Retry with exponential backoff."
+    }
+  } else if ($error_output | str contains "AccessDeniedException") {
+    error make { 
+      msg: $"Access denied during ($operation). Check your AWS credentials and IAM permissions for DynamoDB operations."
+    }
+  } else if ($error_output | str contains "UnrecognizedClientException") {
+    error make { 
+      msg: $"Unrecognized client during ($operation). AWS credentials may be invalid or expired. Run 'aws configure' to set up credentials."
+    }
+  } else {
+    # Generic error with the original output
+    error make { 
+      msg: $"AWS operation failed during ($operation): ($error_output)"
+    }
+  }
+}
+
+def validate_aws_credentials []: nothing -> nothing {
+  try {
+    let result = ^aws sts get-caller-identity
+    let exit_code = $env.LAST_EXIT_CODE
+    
+    if $exit_code != 0 {
+      error make { 
+        msg: "AWS credentials are not configured or invalid. Run 'aws configure' to set up your credentials."
+      }
+    }
+    
+    print "✅ AWS credentials validated"
+  } catch { |error|
+    error make { 
+      msg: $"Failed to validate AWS credentials: ($error.msg). Ensure AWS CLI is installed and credentials are configured."
+    }
+  }
+}
+
+def validate_table_exists [
+  table_name: string
+  region: string
+]: nothing -> nothing {
+  try {
+    let result = ^aws dynamodb describe-table --table-name $table_name --region $region
+    let exit_code = $env.LAST_EXIT_CODE
+    
+    if $exit_code != 0 {
+      error make { msg: $"Failed to describe table ($table_name). Exit code: ($exit_code)" }
+    }
+    
+    print $"✅ Table ($table_name) exists and is accessible"
+  } catch { |error|
+    error make { 
+      msg: $"Table validation failed: ($error.msg)"
+    }
+  }
+}
+
 # AWS DynamoDB Operations
+def get_table_key_schema [
+  table_name: string
+  --region: string  # AWS region
+]: nothing -> record {
+  let aws_region = $region | default $env.AWS_REGION?
+  
+  if $aws_region == null {
+    error make { msg: "AWS region must be provided via --region flag or AWS_REGION environment variable" }
+  }
+  
+  try {
+    let result = ^aws dynamodb describe-table --table-name $table_name --region $aws_region
+    let exit_code = $env.LAST_EXIT_CODE
+    
+    if $exit_code != 0 {
+      error make { msg: $"Failed to describe table ($table_name). Exit code: ($exit_code)" }
+    }
+    
+    let table_description = $result | from json
+    {
+      key_schema: $table_description.Table.KeySchema,
+      attribute_definitions: $table_description.Table.AttributeDefinitions
+    }
+  } catch { |error|
+    error make { msg: $"Error describing table ($table_name): ($error.msg)" }
+  }
+}
+
+def get_key_attributes_for_item [
+  item: record
+  key_schema: list<record>
+  attribute_definitions: list<record>
+]: nothing -> record {
+  # Build the key object dynamically based on the table's schema
+  $key_schema | reduce -f {} { |key_def, acc|
+    let attr_name = $key_def.AttributeName
+    let attr_value = $item | get $attr_name
+    
+    # Find the attribute type from the table definition
+    let attr_type = ($attribute_definitions | where AttributeName == $attr_name | first).AttributeType
+    
+    let dynamodb_value = match $attr_type {
+      "S" => { "S": ($attr_value | into string) },
+      "N" => { "N": ($attr_value | into string) },
+      "B" => { "B": $attr_value }
+    }
+    
+    $acc | insert $attr_name $dynamodb_value
+  }
+}
+
+def convert_from_dynamodb_value [dynamodb_value: record]: nothing -> any {
+  let value_type = ($dynamodb_value | columns | first)
+  let value_data = $dynamodb_value | get $value_type
+  
+  match $value_type {
+    "S" => $value_data,
+    "N" => {
+      # Try to parse as int first, then float
+      try {
+        $value_data | into int
+      } catch {
+        $value_data | into float
+      }
+    },
+    "BOOL" => $value_data,
+    "NULL" => null,
+    "SS" => $value_data,
+    "NS" => ($value_data | each { |n| 
+      try {
+        $n | into int
+      } catch {
+        $n | into float
+      }
+    }),
+    "BS" => $value_data,
+    "L" => ($value_data | each { |item| convert_from_dynamodb_value $item }),
+    "M" => {
+      # Convert nested map recursively
+      let converted_map = ($value_data | transpose key value | reduce -f {} { |row, acc|
+        let converted_value = convert_from_dynamodb_value $row.value
+        $acc | insert $row.key $converted_value
+      })
+      $converted_map
+    },
+    _ => $value_data  # Fallback for unknown types
+  }
+}
+
+def scan_table_page [
+  table_name: string
+  --region: string  # AWS region
+  --exclusive-start-key: any  # For pagination (can be null or record)
+]: nothing -> record {
+  let aws_region = $region | default $env.AWS_REGION?
+  
+  if $aws_region == null {
+    error make { msg: "AWS region must be provided via --region flag or AWS_REGION environment variable" }
+  }
+  
+  let scan_command = if $exclusive_start_key == null {
+    $"aws dynamodb scan --table-name ($table_name) --region ($aws_region)"
+  } else {
+    let temp_file = $"/tmp/exclusive_start_key_(random chars --length 8).json"
+    $exclusive_start_key | to json | save $temp_file
+    let command = $"aws dynamodb scan --table-name ($table_name) --region ($aws_region) --exclusive-start-key file://($temp_file)"
+    $command
+  }
+  
+  try {
+    let result = if $exclusive_start_key == null {
+      ^aws dynamodb scan --table-name $table_name --region $aws_region
+    } else {
+      let temp_file = $"/tmp/exclusive_start_key_(random chars --length 8).json"
+      $exclusive_start_key | to json | save $temp_file
+      let command_result = ^aws dynamodb scan --table-name $table_name --region $aws_region --exclusive-start-key $"file://($temp_file)"
+      rm $temp_file
+      $command_result
+    }
+    
+    let exit_code = $env.LAST_EXIT_CODE
+    
+    if $exit_code != 0 {
+      error make { msg: $"Failed to scan table ($table_name). Exit code: ($exit_code)" }
+    }
+    
+    let scan_result = $result | from json
+    let items = $scan_result | get Items | each { |item|
+      let converted = ($item | transpose key value | reduce -f {} { |row, acc|
+        let field_name = $row.key
+        let dynamodb_value = $row.value
+        let field_value = convert_from_dynamodb_value $dynamodb_value
+        $acc | insert $field_name $field_value
+      })
+      $converted
+    }
+    
+    {
+      items: $items,
+      last_evaluated_key: ($scan_result | get -o LastEvaluatedKey),
+      scanned_count: ($scan_result | get ScannedCount),
+      count: ($scan_result | get Count)
+    }
+  } catch { |error|
+    error make { msg: $"Error scanning table ($table_name): ($error.msg)" }
+  }
+}
+
 def scan_table [
   table_name: string
   --region: string  # AWS region
@@ -69,30 +310,162 @@ def scan_table [
   if $aws_region == null {
     error make { msg: "AWS region must be provided via --region flag or AWS_REGION environment variable" }
   }
-  ^aws dynamodb scan --table-name $table_name --region $aws_region | from json | get Items | each { |item|
-    let converted = {}
-    for field in ($item | columns) {
-      let value = $item | get $field
-      let field_value = if "S" in ($value | columns) {
-        $value.S
-      } else if "N" in ($value | columns) {
-        $value.N | into float
-      } else if "BOOL" in ($value | columns) {
-        $value.BOOL
-      } else if "SS" in ($value | columns) {
-        $value.SS
-      } else if "NS" in ($value | columns) {
-        $value.NS | each { |n| $n | into float }
-      } else if "L" in ($value | columns) {
-        $value.L
-      } else if "M" in ($value | columns) {
-        $value.M
-      } else {
-        $value
-      }
-      $converted | insert $field $field_value
+  
+  print $"Scanning table ($table_name)..."
+  
+  mut all_items = []
+  mut last_evaluated_key = null
+  mut total_scanned = 0
+  mut page_count = 0
+  
+  loop {
+    let page_result = scan_table_page $table_name --region $aws_region --exclusive-start-key $last_evaluated_key
+    
+    $all_items = ($all_items | append $page_result.items)
+    $total_scanned = $total_scanned + $page_result.scanned_count
+    $page_count = $page_count + 1
+    
+    print $"  Page ($page_count): Found ($page_result.count) items (scanned ($page_result.scanned_count))"
+    
+    $last_evaluated_key = $page_result.last_evaluated_key
+    
+    if $last_evaluated_key == null {
+      break
     }
-    $converted
+  }
+  
+  print $"Scan complete: ($all_items | length) total items across ($page_count) pages"
+  $all_items
+}
+
+def convert_to_dynamodb_value [value: any]: any -> record {
+  if $value == null {
+    { "NULL": true }
+  } else {
+    let value_type = ($value | describe)
+    if ($value_type | str starts-with "list") or ($value_type | str starts-with "table") {
+      # Handle list/table types
+      if ($value | length) == 0 {
+        { "L": [] }
+      } else {
+        let first_item = ($value | first)
+        let first_type = ($first_item | describe)
+        
+        # Check if all items are the same primitive type
+        let all_same_type = ($value | all { |item| ($item | describe) == $first_type })
+        
+        if $all_same_type {
+          match $first_type {
+            "string" => { "SS": $value },
+            "int" | "float" => { "NS": ($value | each { |n| $n | into string }) },
+            _ => { "L": ($value | each { |item| convert_to_dynamodb_value $item }) }
+          }
+        } else {
+          # Mixed types - use List format
+          { "L": ($value | each { |item| convert_to_dynamodb_value $item }) }
+        }
+      }
+    } else if ($value_type | str starts-with "record") {
+      # Convert nested record to Map (M) format
+      let converted_map = ($value | transpose key value | reduce -f {} { |row, acc|
+        let nested_value = convert_to_dynamodb_value $row.value
+        $acc | insert $row.key $nested_value
+      })
+      { "M": $converted_map }
+    } else {
+      # Handle primitive types
+      match $value_type {
+        "string" => { "S": $value },
+        "int" => { "N": ($value | into string) },
+        "float" => { "N": ($value | into string) },
+        "bool" => { "BOOL": $value },
+        _ => { "S": ($value | into string) }  # Fallback to string
+      }
+    }
+  }
+}
+
+def batch_write_with_retry [
+  table_name: string
+  dynamodb_items: list<record>
+  --region: string  # AWS region
+  --max-retries: int = 3  # Maximum number of retries
+]: nothing -> nothing {
+  let aws_region = $region | default $env.AWS_REGION?
+  
+  if $aws_region == null {
+    error make { msg: "AWS region must be provided via --region flag or AWS_REGION environment variable" }
+  }
+  
+  mut remaining_items = $dynamodb_items
+  mut retry_count = 0
+  
+  while (($remaining_items | length) > 0 and $retry_count <= $max_retries) {
+    let batch_request = {
+      "RequestItems": {
+        $table_name: $remaining_items
+      }
+    }
+    
+    let temp_file = $"/tmp/batch_request_(random chars --length 8).json"
+    $batch_request | to json | save $temp_file
+    
+    let result = try {
+      let aws_result = ^aws dynamodb batch-write-item --cli-input-json $"file://($temp_file)" --region $aws_region
+      let exit_code = $env.LAST_EXIT_CODE
+      rm $temp_file
+      
+      if $exit_code != 0 {
+        { success: false, error: $"Batch write failed with exit code: ($exit_code)" }
+      } else {
+        let response = $aws_result | from json
+        { success: true, response: $response }
+      }
+    } catch { |error|
+      rm $temp_file
+      { success: false, error: $error.msg }
+    }
+    
+    if $result.success {
+      let response = $result.response
+      
+      # Check for unprocessed items
+      let unprocessed = $response | get -o UnprocessedItems
+      if $unprocessed != null and ($table_name in ($unprocessed | columns)) {
+        $remaining_items = $unprocessed | get $table_name
+        $retry_count = $retry_count + 1
+        
+        if ($remaining_items | length) > 0 {
+          print $"  Retrying ($remaining_items | length) unprocessed items (attempt ($retry_count)/($max_retries))"
+          
+          # Exponential backoff: wait 2^retry_count seconds
+          let wait_time = ([1, 2, 4, 8, 16] | get ($retry_count - 1))
+          print $"  Waiting ($wait_time) seconds before retry..."
+          sleep ($wait_time * 1sec)
+        } else {
+          # No more unprocessed items
+          break
+        }
+      } else {
+        # All items processed successfully
+        break
+      }
+    } else {
+      # Error occurred
+      if $retry_count < $max_retries {
+        $retry_count = $retry_count + 1
+        print $"  Batch write error, retrying (attempt ($retry_count)/($max_retries)): ($result.error)"
+        
+        let wait_time = ([1, 2, 4, 8, 16] | get ($retry_count - 1))
+        sleep ($wait_time * 1sec)
+      } else {
+        error make { msg: $"Batch write failed after ($max_retries) retries: ($result.error)" }
+      }
+    }
+  }
+  
+  if ($remaining_items | length) > 0 {
+    error make { msg: $"Failed to process ($remaining_items | length) items after ($max_retries) retries" }
   }
 }
 
@@ -106,43 +479,32 @@ def batch_write [
   if $aws_region == null {
     error make { msg: "AWS region must be provided via --region flag or AWS_REGION environment variable" }
   }
+  
+  print $"Writing ($items | length) items to ($table_name)..."
+  
   let batches = ($items | chunks 25)
+  let total_batches = ($batches | length)
+  mut batch_num = 0
   
   for batch in $batches {
+    $batch_num = $batch_num + 1
+    let batch_size = ($batch | length)
+    print $"  Processing batch ($batch_num)/($total_batches) - ($batch_size) items"
+    
     let dynamodb_items = ($batch | each { |item|
       let converted_item = ($item | transpose key value | reduce -f {} { |row, acc|
         let field_name = $row.key
         let field_value = $row.value
-        let dynamodb_value = match ($field_value | describe) {
-          "string" => { "S": $field_value },
-          "int" => { "N": ($field_value | into string) },
-          "float" => { "N": ($field_value | into string) },
-          "bool" => { "BOOL": $field_value },
-          "list" => { "SS": $field_value },
-          _ => { "S": ($field_value | into string) }
-        }
+        let dynamodb_value = convert_to_dynamodb_value $field_value
         $acc | insert $field_name $dynamodb_value
       })
       { "PutRequest": { "Item": $converted_item } }
     })
     
-    let batch_request = {
-      "RequestItems": {
-        $table_name: $dynamodb_items
-      }
-    }
-    
-    let temp_file = $"/tmp/batch_request_(random chars --length 8).json"
-    $batch_request | to json | save $temp_file
-    
-    try {
-      ^aws dynamodb batch-write-item --cli-input-json $"file://($temp_file)" --region $aws_region
-      rm $temp_file
-    } catch { |error|
-      rm $temp_file
-      error make { msg: $"Batch write failed: ($error.msg)" }
-    }
+    batch_write_with_retry $table_name $dynamodb_items --region $aws_region
   }
+  
+  print $"Successfully wrote all ($items | length) items to ($table_name)"
 }
 
 def delete_all [
@@ -154,7 +516,14 @@ def delete_all [
   if $aws_region == null {
     error make { msg: "AWS region must be provided via --region flag or AWS_REGION environment variable" }
   }
+  
   print $"Deleting all items from ($table_name)..."
+  
+  # Get the table's key schema dynamically
+  let table_info = get_table_key_schema $table_name --region $aws_region
+  let key_schema = $table_info.key_schema
+  let attribute_definitions = $table_info.attribute_definitions
+  
   let items = scan_table $table_name --region $aws_region
   
   if ($items | length) == 0 {
@@ -165,35 +534,24 @@ def delete_all [
   print $"Deleting ($items | length) items from ($table_name)..."
   let batches = ($items | chunks 25)
   
+  let total_batches = ($batches | length)
+  mut batch_num = 0
+  
   for batch in $batches {
+    $batch_num = $batch_num + 1
+    let batch_size = ($batch | length)
+    print $"  Processing delete batch ($batch_num)/($total_batches) - ($batch_size) items"
+    
     let delete_requests = ($batch | each { |item|
+      let key_object = get_key_attributes_for_item $item $key_schema $attribute_definitions
       {
         "DeleteRequest": {
-          "Key": {
-            "id": { "S": $item.id },
-            "sort_key": { "S": $item.sort_key }
-          }
+          "Key": $key_object
         }
       }
     })
     
-    let delete_request = {
-      "RequestItems": {
-        $table_name: $delete_requests
-      }
-    }
-    
-    let temp_file = $"/tmp/delete_request_(random chars --length 8).json"
-    $delete_request | to json | save $temp_file
-    
-    try {
-      let result = ^aws dynamodb batch-write-item --cli-input-json $"file://($temp_file)" --region $aws_region
-      $result | from json
-      rm $temp_file
-    } catch { |error|
-      rm $temp_file
-      error make { msg: $"Batch delete failed: ($error.msg)" }
-    }
+    batch_write_with_retry $table_name $delete_requests --region $aws_region
   }
 }
 
@@ -388,22 +746,33 @@ def "main status" [
     error make { msg: "AWS region must be provided via --region flag or AWS_REGION environment variable" }
   }
   
-  let description = ^aws dynamodb describe-table --table-name $table_name --region $aws_region | from json
-  let items = scan_table $table_name --region $aws_region
-  
-  let table_info = {
-    table_name: $description.Table.TableName,
-    status: $description.Table.TableStatus,
-    item_count: ($items | length),
-    creation_time: $description.Table.CreationDateTime,
-    size_bytes: $description.Table.TableSizeBytes
+  try {
+    let result = ^aws dynamodb describe-table --table-name $table_name --region $aws_region
+    let exit_code = $env.LAST_EXIT_CODE
+    
+    if $exit_code != 0 {
+      error make { msg: $"Failed to describe table ($table_name). Exit code: ($exit_code)" }
+    }
+    
+    let description = $result | from json
+    let items = scan_table $table_name --region $aws_region
+    
+    let table_info = {
+      table_name: $description.Table.TableName,
+      status: $description.Table.TableStatus,
+      item_count: ($items | length),
+      creation_time: $description.Table.CreationDateTime,
+      size_bytes: $description.Table.TableSizeBytes
+    }
+    
+    print $"Table: ($table_info.table_name)"
+    print $"Status: ($table_info.status)"
+    print $"Items: ($table_info.item_count)"
+    print $"Size: ($table_info.size_bytes) bytes"
+    print $"Created: ($table_info.creation_time)"
+    
+    $table_info
+  } catch { |error|
+    error make { msg: $"Error getting table status for ($table_name): ($error.msg)" }
   }
-  
-  print $"Table: ($table_info.table_name)"
-  print $"Status: ($table_info.status)"
-  print $"Items: ($table_info.item_count)"
-  print $"Size: ($table_info.size_bytes) bytes"
-  print $"Created: ($table_info.creation_time)"
-  
-  $table_info
 }

@@ -15,7 +15,7 @@ A minimal, production-ready test data management tool for DynamoDB tables built 
    export AWS_DEFAULT_REGION=us-east-1
    ```
 
-3. **Set up your DynamoDB table** (any table with `id` as hash key and `sort_key` as range key)
+3. **Set up your DynamoDB table** (any DynamoDB table with any key schema)
 
 4. **Use the tool**:
    ```bash
@@ -212,15 +212,17 @@ The project includes comprehensive testing with 700+ lines of test coverage.
 
 ### Run Tests
 ```bash
-# Quick validation tests
-nu tests/run_simple_tests.nu
+# Install nutest framework first (if not already installed)
+git clone https://github.com/vyadh/nutest
+# Follow installation instructions from the repository
 
-# Manual validation
-nu tests/manual_test_runner.nu
+# Run comprehensive test suite (requires nutest)
+nu tests/run_tests.nu
 
 # Run specific test suites
 nu -c "use tests/unit/test_validation.nu"
 nu -c "use tests/unit/test_data_ops.nu"
+nu -c "use tests/unit/test_critical_bug_fixes.nu"
 ```
 
 ### Test Structure
@@ -234,13 +236,15 @@ nu -c "use tests/unit/test_data_ops.nu"
 ### Core Capabilities
 - **Multiple Format Support**: JSON snapshots, raw JSON arrays, CSV files
 - **Auto-Detection**: Automatically detects file format based on content/extension
-- **Batch Operations**: Respects DynamoDB API limits (25 items per batch)
-- **Type Safety**: Proper type conversion for DynamoDB attribute values
-- **Error Handling**: Graceful handling of malformed data and AWS errors
+- **Batch Operations**: Respects DynamoDB API limits (25 items per batch) with retry logic
+- **Type Safety**: Complete DynamoDB type conversion (S, N, BOOL, NULL, SS, NS, BS, L, M)
+- **Error Handling**: Comprehensive AWS error handling with exponential backoff
+- **Pagination**: Full pagination support for large table scans
+- **Dynamic Schema**: Works with any DynamoDB table key schema
 
 ### Technical Features
 - **Functional Programming**: Pure functions, immutable data structures
-- **Minimal Code**: ~350 lines for complete functionality
+- **Production-Ready Code**: 777 lines with comprehensive AWS API compliance and robust error handling
 - **Zero Dependencies**: Only requires Nushell and AWS CLI
 - **Fast Operations**: Efficient scanning and writing with proper pagination
 - **Comprehensive Testing**: 66 tests covering all functionality
@@ -298,10 +302,10 @@ DynamoDB → scan_table → format → save_snapshot → Output File
 ## 📋 Requirements
 
 ### DynamoDB Table Schema
-Your table must have:
-- **Hash Key**: `id` (String)
-- **Range Key**: `sort_key` (String)
-- **Optional**: Any additional attributes
+Your table can have any key schema:
+- **Hash Key**: Any name and type (String, Number, or Binary)
+- **Range Key**: Optional, any name and type
+- **Attributes**: Any additional attributes with any DynamoDB data types
 
 ### System Requirements
 - **Nushell**: v0.98+ ([install guide](https://www.nushell.sh/book/installation.html))
