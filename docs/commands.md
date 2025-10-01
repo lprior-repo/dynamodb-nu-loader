@@ -8,7 +8,8 @@ Complete documentation for all DynamoDB Nu-Loader commands.
 |---------|--------|---------|-------------|
 | [`status`](#status) | ✅ Safe | Table information | None |
 | [`snapshot`](#snapshot) | ✅ Safe | Create backup | None |
-| [`seed`](#seed) | ⚠️ Destructive | Load test data | **Wipes table** |
+| [`seed`](#seed) | ✅ Safe | Add test data | **Adds to existing** |
+| [`reset`](#reset) | ⚠️ Destructive | Complete refresh | **Wipes + seeds** |
 | [`restore`](#restore) | ⚠️ Destructive | Restore backup | **Wipes table** |
 | [`wipe`](#wipe) | ⚠️ Destructive | Delete all data | **Wipes table** |
 
@@ -135,7 +136,7 @@ nu main.nu snapshot --dry-run
 
 ## seed
 
-Loads test/seed data into the table.
+Adds seed data to the table (non-destructive).
 
 ### Usage
 ```bash
@@ -151,24 +152,33 @@ nu main.nu seed [file] [OPTIONS]
 
 ### Examples
 ```bash
-# Load default seed data
+# Add default seed data
 nu main.nu seed
 
-# Load custom seed data
+# Add custom seed data
 nu main.nu seed my-test-data.json
 
-# Load CSV data
+# Add CSV data
 nu main.nu seed users.csv
 ```
 
-### ⚠️ DESTRUCTIVE OPERATION
+### ✅ NON-DESTRUCTIVE OPERATION
 
-**This command WIPES ALL EXISTING DATA before loading seed data.**
+**This command ADDS data to existing table without clearing.**
 
-Process:
-1. **Deletes all items** from the table
-2. Loads data from the specified file
+Following industry standards (Laravel `db:seed`, Rails `db:seed`):
+1. Loads data from the specified file
+2. **Adds items to existing table** (preserves current data)
 3. Uses batch operations for efficiency
+
+### When to Use
+- Adding test data to development environments
+- Populating tables with reference data
+- Adding sample data for demonstrations
+- Incremental data loading
+
+### For Complete Reset
+Use the [`reset`](#reset) command instead if you need to wipe + seed in one operation.
 
 ### Supported File Formats
 
@@ -276,6 +286,67 @@ The command will fail safely if:
 
 ---
 
+## reset
+
+Complete database reset: wipe + seed in one operation.
+
+### Usage
+```bash
+nu main.nu reset [file] [OPTIONS]
+```
+
+### Arguments
+- `file` - Seed data file (default: `seed-data.json`)
+
+### Options
+- `--table <name>` - DynamoDB table name
+- `--region <region>` - AWS region
+
+### Examples
+```bash
+# Reset with default seed data
+nu main.nu reset
+
+# Reset with custom data
+nu main.nu reset fresh-data.json
+
+# Reset development environment
+nu main.nu reset dev-seed.json
+```
+
+### ⚠️ DESTRUCTIVE OPERATION
+
+**This command WIPES ALL DATA then loads fresh seed data.**
+
+Following industry patterns (Laravel `migrate:fresh --seed`, Prisma `db reset`):
+1. **Deletes all items** from the table
+2. Loads fresh data from the specified file
+3. Single atomic operation for clean state
+
+### When to Use
+- Resetting development environments to clean state
+- Starting fresh between test runs
+- Setting up demo environments
+- Development workflow automation
+
+### Safety Features
+- **Confirmation prompt** before proceeding
+- Validates seed file exists before wiping data
+- Atomic operation (fail fast before destruction)
+
+### Industry Comparison
+| Tool | Command | Pattern |
+|------|---------|---------|
+| Laravel | `migrate:fresh --seed` | Drop → Migrate → Seed |
+| Prisma | `db reset` | Reset → Migrate → Seed |
+| **Nu-Loader** | `reset` | **Wipe → Seed** |
+
+### Related Links
+- [Laravel Database Seeding](https://laravel.com/docs/seeding)
+- [Prisma DB Reset](https://www.prisma.io/docs/reference/api-reference/command-reference#db-reset)
+
+---
+
 ## wipe
 
 Permanently deletes all items from the DynamoDB table.
@@ -286,21 +357,18 @@ nu main.nu wipe [OPTIONS]
 ```
 
 ### Options
-- `--force` or `-f` - Skip confirmation prompt (dangerous!)
 - `--table <name>` - DynamoDB table name
 - `--region <region>` - AWS region
 
 ### Examples
 ```bash
-# Interactive confirmation
+# Interactive confirmation (always required)
 nu main.nu wipe
-# Are you sure you want to delete all data from my-table? y/N: 
-
-# Skip confirmation (dangerous!)
-nu main.nu wipe --force
+# ⚠️  This will PERMANENTLY DELETE all data from my-table
+# Are you sure you want to continue? y/N: 
 
 # Specific table
-nu main.nu wipe --table temp-table --force
+nu main.nu wipe --table temp-table
 ```
 
 ### ⚠️ MOST DESTRUCTIVE OPERATION
@@ -310,30 +378,40 @@ nu main.nu wipe --table temp-table --force
 This is the most dangerous command in the tool. Use with extreme caution.
 
 ### Safety Features
-- **Confirmation prompt** by default (unless `--force` used)
+- **Confirmation prompt** always required (industry standard)
 - Requires exact table name
 - Will not proceed if table doesn't exist
+- No bypass flag (explicit command name is clear enough)
 
 ### Use Cases
 ```bash
 # Clean up after testing
-nu main.nu wipe --force
+nu main.nu wipe
 
-# Reset development environment
+# Reset development environment (better to use reset command)
 nu main.nu snapshot backup-before-reset
-nu main.nu wipe --force
+nu main.nu wipe
 # ... do development work ...
 nu main.nu restore backup-before-reset.json
+```
+
+### Better Alternatives
+```bash
+# ✅ RECOMMENDED: Use reset for complete refresh
+nu main.nu reset fresh-data.json
+
+# ✅ RECOMMENDED: Use restore for recovery
+nu main.nu restore backup.json
 ```
 
 ### Production Safety
 ```bash
 # ❌ NEVER do this in production
 export TABLE_NAME=production-users
-nu main.nu wipe --force
+nu main.nu wipe
 
 # ✅ Use specific table names to avoid accidents
-nu main.nu wipe --table test-table --force
+nu main.nu wipe --table test-table
 ```
 
 ### Related Links

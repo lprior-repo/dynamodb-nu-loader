@@ -12,12 +12,38 @@ nu main.nu status
 # Create backup
 nu main.nu snapshot backup-$(date +%Y%m%d)
 
-# Load test data
+# Add test data (non-destructive)
 nu main.nu seed test-data.json
 
-# Reset to clean state
+# Complete reset (wipe + seed)
+nu main.nu reset test-data.json
+
+# Reset to clean state from backup
 nu main.nu restore baseline.json
 ```
+
+## 🏗️ Industry Standard Patterns
+
+Our commands follow established patterns from popular frameworks:
+
+| Framework | Reset Command | Seed Command | Pattern |
+|-----------|---------------|---------------|---------|
+| **Laravel** | `migrate:fresh --seed` | `db:seed` | Reset = Destructive, Seed = Additive |
+| **Prisma** | `db reset` | Custom scripts | Reset = Complete refresh |
+| **Rails** | `db:reset` | `db:seed` | Reset = Drop + Create + Seed |
+| **Nu-Loader** | `reset` | `seed` | **Reset = Wipe + Seed, Seed = Add only** |
+
+### Why This Design?
+
+**Problems with old design:**
+- `seed` was destructive (confusing)
+- `--force` flag was redundant
+- No single command for complete reset
+
+**Industry-standard solution:**
+- `seed` is now **non-destructive** (adds data)
+- `reset` handles **complete refresh** (wipe + seed)
+- `wipe` requires confirmation (no bypass flag needed)
 
 ### Environment Setup
 ```bash
@@ -43,8 +69,8 @@ echo "Setting up test environment..."
 # Create baseline backup
 nu main.nu snapshot baseline-clean
 
-# Load test data
-nu main.nu seed integration-test-data.json
+# Reset with fresh test data (wipe + seed)
+nu main.nu reset integration-test-data.json
 
 echo "Running tests..."
 npm test
@@ -82,8 +108,8 @@ echo "Testing feature: $FEATURE_NAME"
 # Create feature-specific backup
 nu main.nu snapshot "pre-feature-$FEATURE_NAME"
 
-# Load feature test data
-nu main.nu seed "features/$FEATURE_NAME-data.json"
+# Reset with feature test data
+nu main.nu reset "features/$FEATURE_NAME-data.json"
 
 # Run feature tests
 npm test -- --grep "$FEATURE_NAME"
@@ -125,8 +151,8 @@ echo "Testing data migration..."
 # Create pre-migration backup
 nu main.nu snapshot pre-migration
 
-# Load data that simulates current production
-nu main.nu seed production-like-data.json
+# Reset with production-like data for clean test
+nu main.nu reset production-like-data.json
 
 # Run migration script
 ./run-migration.sh
@@ -179,9 +205,9 @@ EOF
 
 nu generate-load-data.nu > load-test-data.json
 
-# Load data and measure performance
+# Reset with load test data and measure performance
 echo "Loading data..."
-time nu main.nu seed load-test-data.json
+time nu main.nu reset load-test-data.json
 
 # Run load tests
 echo "Running load tests..."
@@ -189,7 +215,7 @@ artillery run load-test-config.yml
 
 # Clean up
 echo "Cleaning up..."
-nu main.nu wipe --force
+nu main.nu wipe
 rm load-test-data.json generate-load-data.nu
 ```
 
@@ -286,15 +312,28 @@ case $operation in
     
   "seed")
     for env in "${environments[@]}"; do
-      echo "Seeding $env..."
+      echo "Adding seed data to $env..."
       TABLE_NAME="$env-users" \
       AWS_REGION="us-east-1" \
       nu main.nu seed "seed-data/$env-data.json"
     done
     ;;
     
+  "reset")
+    if [ -z "$file" ]; then
+      file="seed-data/default-data.json"
+    fi
+    
+    for env in "${environments[@]}"; do
+      echo "Resetting $env with fresh data..."
+      TABLE_NAME="$env-users" \
+      AWS_REGION="us-east-1" \
+      nu main.nu reset "$file"
+    done
+    ;;
+    
   *)
-    echo "Usage: $0 {backup|restore|seed} [file]"
+    echo "Usage: $0 {backup|restore|seed|reset} [file]"
     exit 1
     ;;
 esac
