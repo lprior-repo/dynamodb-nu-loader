@@ -1,6 +1,6 @@
 # 🧩 DynamoDB Nu-Loader
 
-A minimal, production-ready test data management tool for DynamoDB tables built with [Nushell](https://www.nushell.sh/). Features functional programming principles, comprehensive testing, and efficient data operations.
+A Test Data Management Tool for DynamoDB built with [Nushell](https://www.nushell.sh/). Streamlines development workflows with instant data reset, seeding, and backup operations following industry-standard patterns.
 
 ## 🚀 Getting Started
 
@@ -18,10 +18,11 @@ export SNAPSHOTS_DIR=./snapshots
 
 # Basic operations
 nu main.nu status                    # Check table status
-nu main.nu seed seed-data.json       # Load test data
+nu main.nu seed seed-data.json       # Add test data (non-destructive)
+nu main.nu reset seed-data.json      # Wipe + load fresh data
 nu main.nu snapshot backup-name      # Create snapshot
 nu main.nu restore backup-name.json  # Restore from snapshot
-nu main.nu wipe --force             # Clear all data
+nu main.nu wipe                     # Clear all data
 ```
 
 ### 📁 File Format Support
@@ -60,21 +61,23 @@ nu main.nu wipe --force             # Clear all data
 |---------|-------------|-------------|---------|
 | `status` | ✅ **SAFE** | Check table status and metadata | `nu main.nu status` |
 | `snapshot [name]` | ✅ **SAFE** | Create backup of all table data | `nu main.nu snapshot backup` |
-| `seed [file]` | ⚠️ **DESTRUCTIVE** | **WIPES TABLE** then loads test data | `nu main.nu seed data.json` |
+| `seed [file]` | ✅ **SAFE** | Add seed data to existing table | `nu main.nu seed data.json` |
+| `reset [file]` | ⚠️ **DESTRUCTIVE** | **WIPES TABLE** then loads fresh data | `nu main.nu reset data.json` |
 | `restore <file>` | ⚠️ **DESTRUCTIVE** | **WIPES TABLE** then restores from backup | `nu main.nu restore backup.json` |
-| `wipe [--force]` | ⚠️ **DESTRUCTIVE** | **PERMANENTLY DELETES** all table data | `nu main.nu wipe --force` |
+| `wipe` | ⚠️ **DESTRUCTIVE** | **PERMANENTLY DELETES** all table data | `nu main.nu wipe` |
 
 ### ⚠️ Data Destructive Operations
 
 **These commands will delete ALL existing data in your table:**
 
-- **`seed`**: Clears table → Loads seed data from file
+- **`reset`**: Clears table → Loads fresh data from file (like Prisma/Laravel)
 - **`restore`**: Clears table → Loads backup data from file  
 - **`wipe`**: Permanently deletes all table data
 
-**Safe operations** that only read data:
+**Safe operations** that preserve existing data:
 - **`status`**: Shows table information
 - **`snapshot`**: Creates backup files
+- **`seed`**: Adds data to existing table (non-destructive)
 
 ## 🔧 Configuration
 
@@ -93,9 +96,9 @@ nu main.nu status --table my-table --region us-west-2
 **Always create snapshots before destructive operations:**
 
 ```bash
-# ✅ RECOMMENDED: Create backup before making changes
+# ✅ RECOMMENDED: Create backup before destructive operations
 nu main.nu snapshot backup-before-changes
-nu main.nu seed test-data.json         # This wipes existing data
+nu main.nu reset test-data.json        # This wipes existing data
 # If something goes wrong:
 nu main.nu restore backup-before-changes.json
 ```
@@ -110,10 +113,9 @@ nu main.nu restore backup-before-changes.json
 ```bash
 # Development workflow
 terraform apply                        # Set up infrastructure
-nu main.nu snapshot clean-state        # Create baseline backup
-nu main.nu seed                       # Load test data  
+nu main.nu reset seed-data.json        # Load fresh test data  
 ./run-e2e-tests.sh                    # Run tests that mutate data
-nu main.nu restore clean-state.json   # Reset data instantly
+nu main.nu reset seed-data.json        # Reset data instantly
 ./run-more-tests.sh                   # Continue development
 ```
 

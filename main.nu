@@ -38,13 +38,14 @@ def show_enhanced_help []: nothing -> nothing {
   print "    nu main.nu <COMMAND> [OPTIONS]"
   print ""
   print "🔧 COMMANDS:"
+  print "    status              Show table status and approximate item count"
   print "    snapshot <name>     Create a snapshot of the DynamoDB table"
   print "      --dry-run         Count items exactly without saving snapshot"
   print "      --exact-count     Use exact count in metadata (slower)"
+  print "    seed [file]         Add seed data to table (non-destructive)"
   print "    restore <file>      Restore data from a snapshot file (JSON/CSV)"
-  print "    wipe [--force]      Delete all items from the DynamoDB table"
-  print "    seed                Load default seed data into the table"
-  print "    status              Show table status and approximate item count"
+  print "    reset [file]        Wipe table + load fresh data (like Prisma/Laravel)"
+  print "    wipe                Delete all items from the DynamoDB table"
   print ""
   print "🚩 GLOBAL FLAGS:"
   print "    --table <name>      DynamoDB table name (required: use flag or $TABLE_NAME env var)"
@@ -61,16 +62,17 @@ def show_enhanced_help []: nothing -> nothing {
   print "    nu main.nu status --table test-table --region us-east-1"
   print "    nu main.nu snapshot backup-2024 --table my-table --region us-west-2 --snapshots-dir ./backups"
   print "    nu main.nu snapshot --dry-run --table my-table --region us-west-2  # Get exact count only"
+  print "    nu main.nu seed test-data.json --table my-table --region us-west-2  # Add data"
+  print "    nu main.nu reset test-data.json --table my-table --region us-west-2  # Wipe + seed"
   print "    nu main.nu restore backup-2024.json --table my-table --region us-west-2"
-  print "    nu main.nu wipe --force --table my-table --region us-west-2"
-  print "    nu main.nu seed --table my-table --region us-west-2"
+  print "    nu main.nu wipe --table my-table --region us-west-2"
   print ""
   print "💡 TIPS:"
   print "  • For command-specific help: nu main.nu <command> --help"
   print "  • JSON files support both snapshot format and raw arrays"
   print "  • CSV files are auto-detected by .csv extension"
-  print "  • Create snapshots before wiping data"
-  print "  • Use 'seed' to quickly set up test data"
+  print "  • Create snapshots before destructive operations"
+  print "  • Use 'seed' to add data, 'reset' for complete refresh"
   print "  • Use 'snapshot --dry-run' for exact item counts without creating files"
   print ""
   print "🔗 More info: Check README.md for installation and setup"
@@ -861,8 +863,10 @@ def "main restore" [
 # Deletes all items from the DynamoDB table
 # ⚠️ DESTRUCTIVE COMMAND: PERMANENTLY DELETES ALL TABLE DATA
 # This is the most dangerous command - it removes every item from the table
+# Permanently deletes all items from the DynamoDB table
+# ⚠️ DESTRUCTIVE COMMAND: PERMANENTLY DELETES ALL TABLE DATA
+# Follows industry standard: explicit command name removes need for --force flag
 def "main wipe" [
-  --force (-f)     # Skip confirmation prompt (dangerous!)
   --table: string  # DynamoDB table name
   --region: string # AWS region
 ]: nothing -> nothing {
@@ -877,15 +881,14 @@ def "main wipe" [
     error make { msg: "AWS region must be provided via --region flag or AWS_REGION environment variable" }
   }
   
-  # Safety check - require user confirmation unless --force is used
-  if not $force {
-    print $"Are you sure you want to delete all data from ($table_name)? y/N: " --no-newline
-    # 'input' waits for user input from stdin
-    let confirm = (input)
-    if $confirm != "y" {
-      print "Operation cancelled"
-      return
-    }
+  # Safety check - require user confirmation (industry standard for destructive operations)
+  print $"⚠️  This will PERMANENTLY DELETE all data from ($table_name)"
+  print $"Are you sure you want to continue? y/N: " --no-newline
+  # 'input' waits for user input from stdin
+  let confirm = (input)
+  if $confirm != "y" {
+    print "Operation cancelled"
+    return
   }
   
   # ⚠️ DESTRUCTIVE OPERATION: This permanently deletes all table data
@@ -894,9 +897,9 @@ def "main wipe" [
   print "Table wiped successfully"
 }
 
-# Loads test/seed data into the table
-# ⚠️ DESTRUCTIVE COMMAND: CLEARS ALL EXISTING DATA before loading seed data
-# This command is useful for setting up fresh test data for development
+# Loads seed data into the table (non-destructive, adds to existing data)
+# ✅ NON-DESTRUCTIVE: Adds data to table without clearing existing items
+# For complete reset, use 'reset' command instead (follows industry standards)
 def "main seed" [
   file?: string    # Seed data file (default: seed-data.json)
   --table: string  # DynamoDB table name
@@ -922,15 +925,59 @@ def "main seed" [
   # Load seed data from file (supports JSON and CSV formats)
   let seed_data = detect_and_process $seed_file
   
-  # ⚠️ DESTRUCTIVE OPERATION: This deletes ALL existing table data first
+  # ✅ NON-DESTRUCTIVE: Add seed data to existing table (no clearing)
+  let seed_count = ($seed_data | length)
+  print $"Adding ($seed_count) items to ($table_name)..."
+  batch_write $table_name $seed_data --region $aws_region
+  print $"✅ Seeded ($seed_count) items successfully (existing data preserved)"
+}
+
+# Complete database reset: wipe + seed in one operation (industry standard pattern)
+# ⚠️ DESTRUCTIVE COMMAND: WIPES TABLE then loads fresh data
+# Follows Laravel's migrate:fresh --seed, Prisma's db reset pattern
+def "main reset" [
+  file?: string    # Seed data file (default: seed-data.json)
+  --table: string  # DynamoDB table name
+  --region: string # AWS region
+]: nothing -> nothing {
+  let table_name = $table | default $env.TABLE_NAME?
+  let aws_region = $region | default $env.AWS_REGION?
+  let seed_file = if $file != null { $file } else { "seed-data.json" }
+  
+  if $table_name == null {
+    error make { msg: "Table name must be provided via --table flag or TABLE_NAME environment variable" }
+  }
+  
+  if $aws_region == null {
+    error make { msg: "AWS region must be provided via --region flag or AWS_REGION environment variable" }
+  }
+  
+  if not ($seed_file | path exists) {
+    error make { msg: $"Seed file not found: ($seed_file). Create a JSON file with your seed data." }
+  }
+  
+  print $"🔄 RESET: This will wipe table ($table_name) and load fresh data from ($seed_file)"
+  print $"Are you sure you want to continue? y/N: " --no-newline
+  let confirm = (input)
+  if $confirm != "y" {
+    print "Operation cancelled"
+    return
+  }
+  
+  print $"Resetting table ($table_name)..."
+  
+  # Load seed data first (in case of errors, we fail before wiping)
+  let seed_data = detect_and_process $seed_file
+  
+  # ⚠️ DESTRUCTIVE OPERATION: This deletes ALL existing table data
   print $"Clearing table ($table_name)..."
   delete_all $table_name --region $aws_region
   
-  # Load the seed data into the now-empty table
+  # Load the fresh data into the now-empty table
   let seed_count = ($seed_data | length)
   print $"Loading ($seed_count) items into ($table_name)..."
   batch_write $table_name $seed_data --region $aws_region
-  print $"Seeded ($seed_count) items successfully"
+  print $"✅ Reset complete: ($seed_count) items loaded successfully"
 }
 
 # Shows table information and approximate item count
